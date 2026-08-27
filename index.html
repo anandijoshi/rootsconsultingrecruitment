@@ -1453,8 +1453,10 @@ function App() {
 
   useEffect(() => {
     try {
+      const saved = JSON.parse(localStorage.getItem('firebase_config') || '{}');
+      const cfg = (saved.apiKey && saved.databaseURL) ? saved : FIREBASE_CONFIG;
       if (!firebase.apps.length) {
-        firebase.initializeApp(FIREBASE_CONFIG);
+        firebase.initializeApp(cfg);
       }
       db = firebase.database();
       // Quick connectivity check
