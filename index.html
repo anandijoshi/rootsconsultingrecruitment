@@ -387,17 +387,35 @@ function CoffeeChatLog() {
   const [form, setForm] = useState(initForm);
   const [expanded, setExpanded] = useState(null);
   const [search, setSearch] = useState('');
+  const [leaderFilter, setLeaderFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [minScore, setMinScore] = useState('');
   const { data: raw, loading } = useFirebase('coffeeChats');
 
   const chats = raw
     ? Object.entries(raw).map(([id, v]) => ({ id, ...v })).sort((a,b) => b.createdAt - a.createdAt)
     : [];
 
+  const leaders = Array.from(new Set(chats.map(c => c.leaderName).filter(Boolean))).sort();
+
   const filtered = chats.filter(c => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (c.prospectName||'').toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q);
+    if (search) {
+      const q = search.toLowerCase();
+      if (!(c.prospectName||'').toLowerCase().includes(q) && !(c.email||'').toLowerCase().includes(q)) return false;
+    }
+    if (leaderFilter && c.leaderName !== leaderFilter) return false;
+    if (dateFrom && c.date < dateFrom) return false;
+    if (dateTo && c.date > dateTo) return false;
+    if (minScore) {
+      const a = avg(c.ratings);
+      if (a === null || Number(a) < Number(minScore)) return false;
+    }
+    return true;
   });
+
+  const clearFilters = () => { setSearch(''); setLeaderFilter(''); setDateFrom(''); setDateTo(''); setMinScore(''); };
+  const filtersActive = search || leaderFilter || dateFrom || dateTo || minScore;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -463,10 +481,31 @@ function CoffeeChatLog() {
 
       {/* List */}
       <div>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'12px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px' }}>
           <h3 style={{ fontSize:'15px', fontWeight:700 }}>Logged Chats ({filtered.length})</h3>
-          <input type="text" placeholder="Search…" value={search} style={{ width:180 }}
+          <input type="text" placeholder="Search name or email…" value={search} style={{ width:180 }}
             onChange={e => setSearch(e.target.value)} />
+        </div>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', marginBottom:'12px' }}>
+          <select value={leaderFilter} onChange={e=>setLeaderFilter(e.target.value)} style={{ width:150 }}>
+            <option value="">All leaders</option>
+            {leaders.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+          <input type="date" value={dateFrom} title="From date" style={{ width:135 }}
+            onChange={e => setDateFrom(e.target.value)} />
+          <span style={{ color:'var(--g400)', fontSize:12 }}>to</span>
+          <input type="date" value={dateTo} title="To date" style={{ width:135 }}
+            onChange={e => setDateTo(e.target.value)} />
+          <select value={minScore} onChange={e=>setMinScore(e.target.value)} style={{ width:110 }}>
+            <option value="">Any score</option>
+            <option value="4">4+ stars</option>
+            <option value="3">3+ stars</option>
+            <option value="2">2+ stars</option>
+            <option value="1">1+ stars</option>
+          </select>
+          {filtersActive && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>Clear filters</button>
+          )}
         </div>
         {loading ? <div className="loading">Loading…</div>
           : filtered.length === 0 ? <div className="empty">{chats.length===0?'No chats logged yet.':'No results.'}</div>
