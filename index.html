@@ -36,7 +36,7 @@ input,select,textarea,button{font-family:inherit;font-size:14px}
 .header{background:#fff;border-bottom:1px solid var(--g200);display:flex;align-items:center;padding:0 20px;height:54px;position:sticky;top:0;z-index:100;gap:24px;box-shadow:var(--shadow)}
 .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;white-space:nowrap}
 .nav{display:flex;gap:2px;overflow-x:auto}
-.nav-btn{padding:6px 13px;border:none;border-radius:6px;background:none;color:var(--g500);font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap;transition:all .15s}
+.nav-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border:none;border-radius:6px;background:none;color:var(--g500);font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap;transition:all .15s}
 .nav-btn:hover{color:var(--g900);background:var(--g100)}
 .nav-btn.active{color:var(--primary);background:var(--primary-light);font-weight:600}
 .main{flex:1;padding:24px;max-width:1400px;margin:0 auto;width:100%}
@@ -212,7 +212,7 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 </style>
 </head>
 <body>
-<div id="root"><div class="loading">⚙️ Loading dashboard…</div></div>
+<div id="root"><div class="loading">Loading dashboard…</div></div>
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
@@ -241,6 +241,79 @@ function Toaster() {
   );
 }
 
+// ── Icons (static SVGs, no emoji) ──────────────────────────────
+function Icon({ children, size = 15, style }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      style={{ verticalAlign:'-2px', flexShrink:0, ...style }}>
+      {children}
+    </svg>
+  );
+}
+const SettingsIcon = p => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+  </Icon>
+);
+const MailIcon = p => (
+  <Icon {...p}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></Icon>
+);
+const SearchIcon = p => (
+  <Icon {...p}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></Icon>
+);
+const CheckCircleIcon = p => (
+  <Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></Icon>
+);
+const CoffeeIcon = p => (
+  <Icon {...p}>
+    <path d="M17 8h1a4 4 0 1 1 0 8h-1"/>
+    <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/>
+    <line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/>
+  </Icon>
+);
+const FileIcon = p => (
+  <Icon {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M14 2v6h6"/></Icon>
+);
+const ClipboardIcon = p => (
+  <Icon {...p}>
+    <rect x="8" y="2" width="8" height="4" rx="1"/>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+  </Icon>
+);
+const CopyIcon = p => (
+  <Icon {...p}>
+    <rect x="9" y="9" width="13" height="13" rx="2"/>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+  </Icon>
+);
+const AlertTriangleIcon = p => (
+  <Icon {...p}>
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+  </Icon>
+);
+const PaperclipIcon = p => (
+  <Icon {...p}><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></Icon>
+);
+const EyeIcon = p => (
+  <Icon {...p}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></Icon>
+);
+const EyeOffIcon = p => (
+  <Icon {...p}>
+    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+    <line x1="2" y1="2" x2="22" y2="22"/>
+  </Icon>
+);
+const StarIcon = p => (
+  <Icon {...p} style={{ fill:'currentColor', ...(p&&p.style) }}>
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+  </Icon>
+);
+
 // ── Firebase helpers ────────────────────────────────────────────
 let db = null;
 
@@ -262,7 +335,7 @@ function useFirebase(path) {
 const RATING_CATS = [
   { key: 'missionAlignment', label: 'Mission Alignment' },
   { key: 'passionWorkEthic', label: 'Passion / Work Ethic' },
-  { key: 'preparedness', label: 'Preparedness' },
+  { key: 'preparedness', label: 'Chat Preparedness' },
   { key: 'cultureFit', label: 'Culture Fit' },
 ];
 
@@ -405,7 +478,7 @@ function CoffeeChatLog() {
                   <span className="chat-meta">{c.email} · {c.date}{c.leaderName && ` · ${c.leaderName}`}</span>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-                  <span className="avg-pip">⭐ {avg(c.ratings)}</span>
+                  <span className="avg-pip"><StarIcon size={11}/> {avg(c.ratings)}</span>
                   <span style={{ color:'var(--g400)', fontSize:10 }}>{expanded===c.id?'▲':'▼'}</span>
                 </div>
               </div>
@@ -555,7 +628,7 @@ function ApplicationUpload() {
           onDrop={e=>{e.preventDefault();setDragOver(false);parseFile(e.dataTransfer.files[0])}}
           onClick={()=>fileRef.current?.click()}
         >
-          <div className="drop-icon">📄</div>
+          <div className="drop-icon"><FileIcon size={28}/></div>
           <p><strong>Drop your CSV here</strong> or click to browse</p>
           <p style={{ fontSize:12, marginTop:4, color:'var(--g400)' }}>Columns: Name, Email, Grade, First–Fourth Choice, free response cols, Resume</p>
           <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}}
@@ -743,10 +816,10 @@ function ApplicationReview() {
                   </div>
                   <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                     <button className="btn btn-ghost btn-sm" onClick={()=>setShowName(s=>!s)}>
-                      {showName?'🙈 Hide':'👤 Show'} Name
+                      {showName?<EyeOffIcon size={13}/>:<EyeIcon size={13}/>} {showName?'Hide':'Show'} Name
                     </button>
                     <button className="btn btn-ghost btn-sm" onClick={()=>setShowChat(s=>!s)}>
-                      ☕ {showChat?'Hide':'Show'} Chat
+                      <CoffeeIcon size={13}/> {showChat?'Hide':'Show'} Chat
                     </button>
                   </div>
                 </div>
@@ -783,7 +856,7 @@ function ApplicationReview() {
                 {cur.resumePath && (
                   <div className="sec">
                     <div className="sec-title">Resume</div>
-                    <a href={cur.resumePath} target="_blank" rel="noopener noreferrer" className="resume-link">📎 View Resume</a>
+                    <a href={cur.resumePath} target="_blank" rel="noopener noreferrer" className="resume-link"><PaperclipIcon size={13}/> View Resume</a>
                   </div>
                 )}
 
@@ -815,13 +888,13 @@ function ApplicationReview() {
           {/* Sidebar */}
           {showChat && (
             <div className="sidebar">
-              <h3>☕ Coffee Chat</h3>
+              <h3><CoffeeIcon size={15}/> Coffee Chat</h3>
               {chat ? (
                 <>
                   <div style={{marginBottom:14}}>
                     <p style={{fontSize:13,marginBottom:4}}><strong>Leader:</strong> {chat.leaderName||'—'}</p>
                     <p style={{fontSize:13,marginBottom:4}}><strong>Date:</strong> {chat.date||'—'}</p>
-                    <p style={{fontSize:13}}><strong>Avg:</strong> ⭐ {avg(chat.ratings)}</p>
+                    <p style={{fontSize:13}}><strong>Avg:</strong> <StarIcon size={11}/> {avg(chat.ratings)}</p>
                   </div>
                   {RATING_CATS.map(({key,label})=>(
                     <div key={key} className="rrow"><span className="rlabel" style={{fontSize:12,width:130}}>{label}</span>
@@ -990,7 +1063,7 @@ function DecisionTracker() {
                     <td>{a.grade||'—'}</td>
                     <td>{a.teamRankings?.first||'—'}</td>
                     <td>{c
-                      ?<span style={{display:'flex',alignItems:'center',gap:4}}><span className="badge badge-ok">✓</span><span style={{fontSize:12,color:'var(--g500)'}}>⭐{avg(c.ratings)}</span></span>
+                      ?<span style={{display:'flex',alignItems:'center',gap:4}}><span className="badge badge-ok">✓</span><span style={{fontSize:12,color:'var(--g500)',display:'inline-flex',alignItems:'center',gap:2}}><StarIcon size={11}/>{avg(c.ratings)}</span></span>
                       :<span className="badge badge-gray">None</span>}
                     </td>
                     <td>
@@ -1077,7 +1150,7 @@ function EmailDashboard() {
 
     const resendKey = localStorage.getItem('resend_api_key');
     if (!resendKey) {
-      toast.error('No Resend API key configured — see Settings ⚙️');
+      toast.error('No Resend API key configured — see Settings');
       return;
     }
 
@@ -1132,8 +1205,8 @@ function EmailDashboard() {
       <div className="page-header"><h2>Email Dashboard</h2></div>
 
       <div className="email-tabs">
-        <button className={`etab ${tab==='compose'?'on':''}`} onClick={()=>setTab('compose')}>✉️ Compose & Send</button>
-        <button className={`etab ${tab==='log'?'on':''}`} onClick={()=>setTab('log')}>📋 Log ({log.length})</button>
+        <button className={`etab ${tab==='compose'?'on':''}`} onClick={()=>setTab('compose')}><MailIcon size={13}/> Compose & Send</button>
+        <button className={`etab ${tab==='log'?'on':''}`} onClick={()=>setTab('log')}><ClipboardIcon size={13}/> Log ({log.length})</button>
       </div>
 
       {tab==='compose' && (
@@ -1205,11 +1278,11 @@ function EmailDashboard() {
               </button>
               <button className="btn btn-secondary" onClick={copyAll}
                 disabled={selected.size===0} title="Copy email text to clipboard">
-                📋 Copy
+                <CopyIcon size={13}/> Copy
               </button>
             </div>
             <p style={{ fontSize:11, color:'var(--g400)', marginTop:6, textAlign:'center' }}>
-              Requires Resend API key in ⚙️ Settings · Or use 📋 Copy to send manually
+              Requires Resend API key in Settings · Or use Copy to send manually
             </p>
           </div>
 
@@ -1233,7 +1306,7 @@ function EmailDashboard() {
                 </div>
                 <div className="preview-text">{previewFilled.body}</div>
                 <button className="btn btn-ghost btn-sm" style={{ marginTop:10 }}
-                  onClick={()=>copyEmail(previewApp)}>📋 Copy This Email</button>
+                  onClick={()=>copyEmail(previewApp)}><CopyIcon size={13}/> Copy This Email</button>
               </div>
             ) : (
               <div className="empty">Select a decision filter to preview.</div>
@@ -1338,7 +1411,7 @@ function SetupModal({ onSave }) {
         ) : (
           <>
             <button className="btn btn-secondary" style={{ marginBottom:14, width:'100%' }} onClick={()=>setPasteMode(true)}>
-              📋 Paste Firebase Config Object (Easier)
+              <ClipboardIcon size={13}/> Paste Firebase Config Object (Easier)
             </button>
             {Object.entries({
               apiKey:'API Key *', authDomain:'Auth Domain', databaseURL:'Database URL *',
@@ -1382,7 +1455,7 @@ function SettingsModal({ onClose }) {
   return (
     <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
       <div className="modal">
-        <h2>⚙️ Settings</h2>
+        <h2><SettingsIcon size={17}/> Settings</h2>
         <p className="sub">Config is stored in your browser's localStorage.</p>
 
         <h3 style={{ fontSize:14, fontWeight:700, margin:'16px 0 10px' }}>Firebase Config</h3>
@@ -1396,7 +1469,7 @@ function SettingsModal({ onClose }) {
         <h3 style={{ fontSize:14, fontWeight:700, margin:'16px 0 10px' }}>Resend Email</h3>
         <div className="step-box">
           <p><strong>Optional:</strong> Add your Resend API key to enable sending emails directly from the dashboard. Get one free at <a href="https://resend.com" target="_blank" rel="noopener">resend.com</a>.<br/>
-          <strong>Note:</strong> CORS may block browser-side calls — use the 📋 Copy button as a reliable fallback.</p>
+          <strong>Note:</strong> CORS may block browser-side calls — use the Copy button as a reliable fallback.</p>
         </div>
         <div className="form-group">
           <label>Resend API Key</label>
@@ -1437,11 +1510,11 @@ const FIREBASE_CONFIG = {
 //  APP ROOT
 // ═══════════════════════════════════════════════════════════════
 const TABS = [
-  { id:'coffee',    label:'☕ Coffee Chats' },
-  { id:'upload',    label:'📄 Upload Apps' },
-  { id:'review',    label:'🔍 Review' },
-  { id:'decisions', label:'✅ Decisions' },
-  { id:'email',     label:'✉️ Email' },
+  { id:'coffee',    label:'Coffee Chats', icon: CoffeeIcon },
+  { id:'upload',    label:'Upload Apps',  icon: FileIcon },
+  { id:'review',    label:'Review',       icon: SearchIcon },
+  { id:'decisions', label:'Decisions',    icon: CheckCircleIcon },
+  { id:'email',     label:'Email',        icon: MailIcon },
 ];
 
 function App() {
@@ -1500,20 +1573,20 @@ function App() {
         <nav className="nav">
           {TABS.map(t => (
             <button key={t.id} className={`nav-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}>
-              {t.label}
+              <t.icon size={14}/> {t.label}
             </button>
           ))}
         </nav>
-        <button className="btn btn-ghost btn-sm settings-btn" onClick={()=>setShowSettings(true)} title="Settings">⚙️</button>
+        <button className="btn btn-ghost btn-sm settings-btn" onClick={()=>setShowSettings(true)} title="Settings"><SettingsIcon size={15}/></button>
       </header>
 
       <main className="main">
         {dbError ? (
           <div style={{padding:'60px 20px',textAlign:'center'}}>
-            <div style={{fontSize:32,marginBottom:12}}>⚠️</div>
+            <div style={{marginBottom:12,color:'var(--warning)'}}><AlertTriangleIcon size={32}/></div>
             <h2 style={{marginBottom:8}}>Firebase connection error</h2>
             <p style={{color:'var(--g500)',marginBottom:16,fontSize:13}}>{dbError}</p>
-            <p style={{fontSize:13,color:'var(--g500)'}}>Open ⚙️ Settings to update your config, or check that Realtime Database is enabled in your Firebase project.</p>
+            <p style={{fontSize:13,color:'var(--g500)'}}>Open Settings to update your config, or check that Realtime Database is enabled in your Firebase project.</p>
           </div>
         ) : !ready ? (
           <div className="empty" style={{padding:'100px 20px'}}>
