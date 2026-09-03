@@ -112,6 +112,10 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 .chat-meta{font-size:12px;color:var(--g500)}
 .avg-pip{background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:100px;font-size:12px;font-weight:600}
 .chat-body{padding:12px 14px;border-top:1px solid var(--g100);background:var(--g50)}
+.chat-entry-list{display:flex;flex-direction:column;gap:8px}
+.chat-entry{background:#fff;border:1px solid var(--g200);border-radius:8px;overflow:hidden}
+.chat-entry-head{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;cursor:pointer;gap:10px}
+.chat-entry-body{padding:9px 12px;border-top:1px solid var(--g100)}
 .chat-quote{font-style:italic;color:var(--g600);font-size:13px;border-left:3px solid var(--g200);padding-left:10px;margin:10px 0;line-height:1.6}
 
 /* ── Upload page ── */
@@ -386,7 +390,8 @@ const initForm = {
 
 function CoffeeChatLog() {
   const [form, setForm] = useState(initForm);
-  const [expanded, setExpanded] = useState(null);
+  const [expandedProspect, setExpandedProspect] = useState(null);
+  const [expandedEntry, setExpandedEntry] = useState(null);
   const [search, setSearch] = useState('');
   const [leaderFilter, setLeaderFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -417,6 +422,23 @@ function CoffeeChatLog() {
 
   const clearFilters = () => { setSearch(''); setLeaderFilter(''); setDateFrom(''); setDateTo(''); setMinScore(''); };
   const filtersActive = search || leaderFilter || dateFrom || dateTo || minScore;
+
+  // Group entries by prospect (keyed on email, falling back to name) while
+  // keeping each individual logged chat intact underneath. `filtered` is
+  // already sorted most-recent-first, so the first entry seen per prospect
+  // also determines that prospect's position in the group list.
+  const groups = [];
+  const groupsByKey = new Map();
+  for (const c of filtered) {
+    const key = (c.email || c.prospectName || '').toLowerCase();
+    let group = groupsByKey.get(key);
+    if (!group) {
+      group = { key, prospectName: c.prospectName, email: c.email, entries: [] };
+      groupsByKey.set(key, group);
+      groups.push(group);
+    }
+    group.entries.push(c);
+  }
 
   const submit = async (e) => {
     e.preventDefault();
@@ -510,30 +532,52 @@ function CoffeeChatLog() {
         </div>
         {loading ? <div className="loading">Loading…</div>
           : filtered.length === 0 ? <div className="empty">{chats.length===0?'No chats logged yet.':'No results.'}</div>
-          : filtered.map(c => (
-            <div key={c.id} className="chat-card">
-              <div className="chat-head" onClick={() => setExpanded(expanded===c.id?null:c.id)}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <span className="chat-name">{c.prospectName}</span>
-                  <span className="chat-meta">{c.email} · {c.date}{c.leaderName && ` · ${c.leaderName}`}</span>
+          : groups.map(g => {
+            const groupAvg = (g.entries.reduce((sum,e) => sum + Number(avg(e.ratings)||0), 0) / g.entries.length).toFixed(1);
+            const prospectOpen = expandedProspect === g.key;
+            return (
+              <div key={g.key} className="chat-card">
+                <div className="chat-head" onClick={() => setExpandedProspect(prospectOpen?null:g.key)}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <span className="chat-name">{g.prospectName}</span>
+                    <span className="chat-meta">{g.email}{g.entries.length>1 && ` · ${g.entries.length} chats`}</span>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                    <span className="avg-pip"><StarIcon size={11}/> {groupAvg}</span>
+                    <span style={{ color:'var(--g400)', fontSize:10 }}>{prospectOpen?'▲':'▼'}</span>
+                  </div>
                 </div>
-                <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-                  <span className="avg-pip"><StarIcon size={11}/> {avg(c.ratings)}</span>
-                  <span style={{ color:'var(--g400)', fontSize:10 }}>{expanded===c.id?'▲':'▼'}</span>
-                </div>
+                {prospectOpen && (
+                  <div className="chat-body chat-entry-list">
+                    {g.entries.map(c => {
+                      const entryOpen = expandedEntry === c.id;
+                      return (
+                        <div key={c.id} className="chat-entry">
+                          <div className="chat-entry-head" onClick={() => setExpandedEntry(entryOpen?null:c.id)}>
+                            <span className="chat-meta">{c.date}{c.leaderName && ` · ${c.leaderName}`}</span>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                              <span className="avg-pip"><StarIcon size={11}/> {avg(c.ratings)}</span>
+                              <span style={{ color:'var(--g400)', fontSize:10 }}>{entryOpen?'▲':'▼'}</span>
+                            </div>
+                          </div>
+                          {entryOpen && (
+                            <div className="chat-entry-body">
+                              {RATING_CATS.map(({ key, label }) => (
+                                <div key={key} className="rrow"><span className="rlabel">{label}</span>
+                                  <Stars value={c.ratings?.[key]||0} readOnly /></div>
+                              ))}
+                              {c.comments && <p className="chat-quote">"{c.comments}"</p>}
+                              <button className="btn btn-danger btn-sm" style={{ marginTop:8 }} onClick={() => del(c.id)}>Delete</button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              {expanded===c.id && (
-                <div className="chat-body">
-                  {RATING_CATS.map(({ key, label }) => (
-                    <div key={key} className="rrow"><span className="rlabel">{label}</span>
-                      <Stars value={c.ratings?.[key]||0} readOnly /></div>
-                  ))}
-                  {c.comments && <p className="chat-quote">"{c.comments}"</p>}
-                  <button className="btn btn-danger btn-sm" style={{ marginTop:8 }} onClick={() => del(c.id)}>Delete</button>
-                </div>
-              )}
-            </div>
-          ))
+            );
+          })
         }
       </div>
     </div>
