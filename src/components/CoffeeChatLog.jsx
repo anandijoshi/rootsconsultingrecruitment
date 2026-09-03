@@ -49,7 +49,8 @@ export default function CoffeeChatLog() {
   const [form, setForm] = useState(initialForm);
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState(null);
+  const [expandedProspect, setExpandedProspect] = useState(null);
+  const [expandedEntryId, setExpandedEntryId] = useState(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -94,6 +95,23 @@ export default function CoffeeChatLog() {
     const q = search.toLowerCase();
     return c.prospectName?.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q) || c.leaderName?.toLowerCase().includes(q);
   });
+
+  // Group entries by prospect (keyed on email, falling back to name) while
+  // keeping each individual logged chat intact underneath. `filtered` is
+  // already sorted most-recent-first, so the first entry seen per prospect
+  // also determines that prospect's position in the group list.
+  const groups = [];
+  const groupsByKey = new Map();
+  for (const chat of filtered) {
+    const key = (chat.email || chat.prospectName || '').toLowerCase();
+    let group = groupsByKey.get(key);
+    if (!group) {
+      group = { key, prospectName: chat.prospectName, email: chat.email, entries: [] };
+      groupsByKey.set(key, group);
+      groups.push(group);
+    }
+    group.entries.push(chat);
+  }
 
   return (
     <div className="page-layout">
@@ -186,48 +204,80 @@ export default function CoffeeChatLog() {
           </div>
         ) : (
           <div className="chat-list">
-            {filtered.map(chat => (
-              <div key={chat.id} className="chat-card">
-                <div
-                  className="chat-card-header"
-                  onClick={() => setExpandedId(expandedId === chat.id ? null : chat.id)}
-                >
-                  <div className="chat-info">
-                    <span className="chat-name">{chat.prospectName}</span>
-                    <span className="chat-meta">
-                      {chat.email} · {chat.date}
-                      {chat.leaderName && ` · by ${chat.leaderName}`}
-                    </span>
-                  </div>
-                  <div className="chat-summary">
-                    <span className="avg-badge">⭐ {avgRating(chat.ratings)}</span>
-                    <span className="expand-icon">{expandedId === chat.id ? '▲' : '▼'}</span>
-                  </div>
-                </div>
+            {groups.map(group => {
+              const groupAvg = (
+                group.entries.reduce((sum, e) => sum + parseFloat(avgRating(e.ratings)), 0) / group.entries.length
+              ).toFixed(1);
+              const isProspectOpen = expandedProspect === group.key;
 
-                {expandedId === chat.id && (
-                  <div className="chat-card-body">
-                    {RATING_CATEGORIES.map(({ key, label }) => (
-                      <div key={key} className="rating-row" style={{ marginBottom: '6px' }}>
-                        <span className="rating-label">{label}</span>
-                        <StarRating value={chat.ratings?.[key] || 0} readOnly />
-                      </div>
-                    ))}
-                    {chat.comments && (
-                      <p className="chat-comments">"{chat.comments}"</p>
-                    )}
-                    <div style={{ marginTop: '12px' }}>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={() => handleDelete(chat.id)}
-                      >
-                        Delete
-                      </button>
+              return (
+                <div key={group.key} className="chat-card">
+                  <div
+                    className="chat-card-header"
+                    onClick={() => setExpandedProspect(isProspectOpen ? null : group.key)}
+                  >
+                    <div className="chat-info">
+                      <span className="chat-name">{group.prospectName}</span>
+                      <span className="chat-meta">
+                        {group.email}
+                        {group.entries.length > 1 && ` · ${group.entries.length} chats`}
+                      </span>
+                    </div>
+                    <div className="chat-summary">
+                      <span className="avg-badge">⭐ {groupAvg}</span>
+                      <span className="expand-icon">{isProspectOpen ? '▲' : '▼'}</span>
                     </div>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {isProspectOpen && (
+                    <div className="chat-card-body chat-entry-list">
+                      {group.entries.map(chat => {
+                        const isEntryOpen = expandedEntryId === chat.id;
+                        return (
+                          <div key={chat.id} className="chat-entry">
+                            <div
+                              className="chat-entry-header"
+                              onClick={() => setExpandedEntryId(isEntryOpen ? null : chat.id)}
+                            >
+                              <span className="chat-meta">
+                                {chat.date}
+                                {chat.leaderName && ` · by ${chat.leaderName}`}
+                              </span>
+                              <div className="chat-summary">
+                                <span className="avg-badge">⭐ {avgRating(chat.ratings)}</span>
+                                <span className="expand-icon">{isEntryOpen ? '▲' : '▼'}</span>
+                              </div>
+                            </div>
+
+                            {isEntryOpen && (
+                              <div className="chat-entry-body">
+                                {RATING_CATEGORIES.map(({ key, label }) => (
+                                  <div key={key} className="rating-row" style={{ marginBottom: '6px' }}>
+                                    <span className="rating-label">{label}</span>
+                                    <StarRating value={chat.ratings?.[key] || 0} readOnly />
+                                  </div>
+                                ))}
+                                {chat.comments && (
+                                  <p className="chat-comments">"{chat.comments}"</p>
+                                )}
+                                <div style={{ marginTop: '12px' }}>
+                                  <button
+                                    className="btn btn-danger btn-sm"
+                                    onClick={() => handleDelete(chat.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
