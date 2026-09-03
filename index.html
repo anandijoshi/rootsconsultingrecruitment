@@ -199,6 +199,7 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 /* ── Setup Modal ── */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
 .modal{background:#fff;border-radius:16px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-wide{max-width:760px}
 .modal h2{font-size:20px;font-weight:700;margin-bottom:4px}
 .modal .sub{font-size:13px;color:var(--g500);margin-bottom:20px}
 .modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--g200)}
@@ -318,6 +319,17 @@ const StarIcon = p => (
     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
   </Icon>
 );
+const XIcon = p => (
+  <Icon {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>
+);
+
+// Converts any Google Drive share-link format (open?id=, file/d/…/view, uc?id=)
+// into the /preview form Drive will render inside an iframe.
+function driveEmbedUrl(url) {
+  const m = (url||'').match(/[-\w]{25,}/);
+  if (!m) return url;
+  return `https://drive.google.com/file/d/${m[0]}/preview`;
+}
 
 // ── Firebase helpers ────────────────────────────────────────────
 let db = null;
@@ -587,24 +599,50 @@ function CoffeeChatLog() {
 // ═══════════════════════════════════════════════════════════════
 //  APPLICATION UPLOAD
 // ═══════════════════════════════════════════════════════════════
-const TPL_HEADERS = ['Name','Email','Grade','First Choice','Second Choice','Third Choice','Fourth Choice','Free Response 1','Free Response 2','Free Response 3','Resume'];
-const TPL_EXAMPLE = ['Jane Smith','jane@example.com','Junior','Engineering','Design','Marketing','Operations','I want to join because…','My experience…','A challenge I overcame…','https://drive.google.com/resume'];
+const TPL_HEADERS = [
+  'Timestamp','Email Address','First Name','Last Name','STUDENT Email','New or Returning Member?',
+  'What is a small business you are passionate about and why? (200 words max)','Blinded Resume',
+  "Rank the projects you're interested in joining:  1: MOST WANTED OPTION 7: LEAST WANTED OPTION [World Centric]",
+  "Rank the projects you're interested in joining:  1: MOST WANTED OPTION 7: LEAST WANTED OPTION [Tara's Organic Ice Cream]",
+  "Rank the projects you're interested in joining:  1: MOST WANTED OPTION 7: LEAST WANTED OPTION [Berkeley Humane]",
+  "Rank the projects you're interested in joining:  1: MOST WANTED OPTION 7: LEAST WANTED OPTION [1951 Coffee]",
+  "Rank the projects you're interested in joining:  1: MOST WANTED OPTION 7: LEAST WANTED OPTION [Advisory & Research]",
+  "Rank the projects you're interested in joining:  1: MOST WANTED OPTION 7: LEAST WANTED OPTION [Kash Cafe]",
+  "Rank the projects you're interested in joining:  1: MOST WANTED OPTION 7: LEAST WANTED OPTION [Other]",
+  'Can you make our bi-weekly meeting time?','Any other questions/comments/concerns?',
+  'Why are you interested in Roots Consulting? (200 words max)',
+];
+const TPL_EXAMPLE = [
+  '9/1/2026 12:00:00','jane@berkeley.edu','Jane','Smith','jane@berkeley.edu','New',
+  'I love how Blue Bottle treats every neighborhood cafe as its own community hub…',
+  'https://drive.google.com/open?id=EXAMPLE_FILE_ID',
+  '2','4','1','6','3','5','7','Yes','N/A',
+  'Roots stood out to me because of its hands-on work with real small businesses…',
+];
 
-const NAME_AL  = ['Name','Prospect Name','Full Name','Applicant Name'];
-const EMAIL_AL = ['Email','Email Address','Prospect Email'];
-const GRADE_AL = ['Grade','Year','Class Year','Standing'];
-const CH1_AL   = ['First Choice','1st Choice','Team 1','Choice 1'];
-const CH2_AL   = ['Second Choice','2nd Choice','Team 2','Choice 2'];
-const CH3_AL   = ['Third Choice','3rd Choice','Team 3','Choice 3'];
-const CH4_AL   = ['Fourth Choice','4th Choice','Team 4','Choice 4'];
-const RES_AL   = ['Resume','Resume Path','Resume Link','Resume URL','CV'];
-
-function findCol(fields, aliases) {
-  for (const a of aliases) {
-    const f = fields.find(x => (x||'').toLowerCase().trim() === a.toLowerCase());
-    if (f) return f;
+// Roots recruitment sheet has duplicate-named columns because the Google Form
+// branches on New vs Returning member (Resume, Business Passion, the 7 project
+// rank columns, meeting time, and comments each appear twice). These helpers
+// find every matching column and `coalesce` picks whichever one that row
+// actually filled in, since a response only ever answers one branch.
+const cleanHeader = s => (s||'').replace(/\s+/g,' ').trim();
+const headerHas = (h, needle) => cleanHeader(h).toLowerCase().includes(needle.toLowerCase());
+const findIdx = (headers, test) => headers.findIndex(h => h && test(h));
+const findAllIdx = (headers, test) => headers.reduce((acc,h,i) => (h && test(h) ? [...acc,i] : acc), []);
+const coalesce = (row, idxs) => {
+  for (const i of idxs) {
+    const v = (row[i]||'').trim();
+    if (v) return v;
   }
-  return null;
+  return '';
+};
+
+const PROJECT_ALIASES = { 'a&r': 'Advisory & Research' };
+function extractProject(header) {
+  const m = (header||'').match(/\[([^\]]+)\]/);
+  if (!m) return null;
+  const raw = m[1].trim();
+  return PROJECT_ALIASES[raw.toLowerCase()] || raw;
 }
 
 function ApplicationUpload() {
@@ -623,39 +661,75 @@ function ApplicationUpload() {
   const parseFile = file => {
     if (!file?.name.endsWith('.csv')) { toast.error('Please upload a .csv file'); return; }
     Papa.parse(file, {
-      header:true, skipEmptyLines:true,
-      complete: ({ data, meta }) => {
-        if (!data.length) { toast.error('CSV is empty'); return; }
-        const f = meta.fields || [];
-        const cm = {
-          name:findCol(f,NAME_AL), email:findCol(f,EMAIL_AL), grade:findCol(f,GRADE_AL),
-          c1:findCol(f,CH1_AL), c2:findCol(f,CH2_AL), c3:findCol(f,CH3_AL), c4:findCol(f,CH4_AL),
-          res:findCol(f,RES_AL),
-        };
-        const mapped = new Set(Object.values(cm).filter(Boolean));
-        const frCols = f.filter(x => x && !mapped.has(x));
+      header:false, skipEmptyLines:true,
+      complete: ({ data }) => {
+        if (data.length < 2) { toast.error('CSV is empty'); return; }
+        const headers = data[0];
+        const rows = data.slice(1);
 
-        const parsed = data.map(row => {
-          const name = (cm.name ? row[cm.name] : '').trim();
-          const match = matchChat(name);
+        const iEmail = findIdx(headers, h => cleanHeader(h).toLowerCase()==='email address');
+        const iFirst = findIdx(headers, h => cleanHeader(h).toLowerCase()==='first name');
+        const iLast = findIdx(headers, h => cleanHeader(h).toLowerCase()==='last name');
+        const iStudentEmail = findIdx(headers, h => headerHas(h,'student') && headerHas(h,'email'));
+        const iMembership = findIdx(headers, h => headerHas(h,'new or returning'));
+        const rankIdxs = findAllIdx(headers, h => headerHas(h,"rank the projects"));
+        const resumeIdxs = findAllIdx(headers, h => headerHas(h,'resume'));
+        const meetingIdxs = findAllIdx(headers, h => headerHas(h,'meeting time'));
+        const commentsIdxs = findAllIdx(headers, h => headerHas(h,'other questions') && headerHas(h,'comments'));
+
+        const rankGroups = new Map();
+        rankIdxs.forEach(i => {
+          const proj = extractProject(headers[i]);
+          if (!proj) return;
+          if (!rankGroups.has(proj)) rankGroups.set(proj, []);
+          rankGroups.get(proj).push(i);
+        });
+
+        const mappedIdx = new Set(
+          [iEmail,iFirst,iLast,iStudentEmail,iMembership,...resumeIdxs,...meetingIdxs,...commentsIdxs,...rankIdxs]
+            .filter(i => i>=0)
+        );
+
+        const parsed = rows.map(row => {
+          const firstName = iFirst>=0 ? (row[iFirst]||'').trim() : '';
+          const lastName = iLast>=0 ? (row[iLast]||'').trim() : '';
+          const prospectName = [firstName,lastName].filter(Boolean).join(' ');
+          const match = matchChat(prospectName);
+
+          const ranked = [];
+          rankGroups.forEach((idxs, proj) => {
+            const n = parseInt(coalesce(row, idxs), 10);
+            if (!isNaN(n)) ranked.push({ proj, n });
+          });
+          ranked.sort((a,b) => a.n-b.n);
+
+          const freeResponses = headers
+            .map((h,i) => ({ h, i }))
+            .filter(({h,i}) => h && !mappedIdx.has(i))
+            .map(({h,i}) => ({ question: h, answer: (row[i]||'').trim() }))
+            .filter(x => x.answer);
+
           return {
-            prospectName: name,
-            email: (cm.email ? row[cm.email] : '').trim(),
-            grade: (cm.grade ? row[cm.grade] : '').trim(),
+            prospectName, firstName, lastName,
+            email: iEmail>=0 ? (row[iEmail]||'').trim() : '',
+            studentEmail: iStudentEmail>=0 ? (row[iStudentEmail]||'').trim() : '',
+            membershipStatus: iMembership>=0 ? (row[iMembership]||'').trim() : '',
+            grade: '',
             teamRankings: {
-              first: (cm.c1 ? row[cm.c1] : '').trim(),
-              second: (cm.c2 ? row[cm.c2] : '').trim(),
-              third: (cm.c3 ? row[cm.c3] : '').trim(),
-              fourth: (cm.c4 ? row[cm.c4] : '').trim(),
+              first: ranked[0]?.proj || '',
+              second: ranked[1]?.proj || '',
+              third: ranked[2]?.proj || '',
             },
-            freeResponses: frCols.map(col => ({ question:col, answer:(row[col]||'').trim() })).filter(x=>x.answer),
-            resumePath: (cm.res ? row[cm.res] : '').trim(),
+            meetingAvailability: coalesce(row, meetingIdxs),
+            commentsConcerns: coalesce(row, commentsIdxs),
+            freeResponses,
+            resumePath: coalesce(row, resumeIdxs),
             coffeeChatId: match?.id || null,
             decision: 'undecided',
             notes: '',
             createdAt: Date.now(),
           };
-        });
+        }).filter(a => a.prospectName || a.email);
         setPreview(parsed);
         toast.success(`Parsed ${parsed.length} applications`);
       },
@@ -714,7 +788,7 @@ function ApplicationUpload() {
         >
           <div className="drop-icon"><FileIcon size={28}/></div>
           <p><strong>Drop your CSV here</strong> or click to browse</p>
-          <p style={{ fontSize:12, marginTop:4, color:'var(--g400)' }}>Columns: Name, Email, Grade, First–Fourth Choice, free response cols, Resume</p>
+          <p style={{ fontSize:12, marginTop:4, color:'var(--g400)' }}>Export the Roots application Google Sheet as CSV and drop it in as-is — every column is picked up automatically.</p>
           <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}}
             onChange={e=>parseFile(e.target.files[0])} />
         </div>
@@ -791,8 +865,9 @@ function ApplicationUpload() {
 // ═══════════════════════════════════════════════════════════════
 function ApplicationReview() {
   const [idx, setIdx] = useState(0);
-  const [showName, setShowName] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   const [showChat, setShowChat] = useState(true);
+  const [showResume, setShowResume] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [filters, setFilters] = useState({ team:'', chat:'all', decision:'all', search:'' });
   const { data: appsRaw } = useFirebase('applications');
@@ -819,7 +894,7 @@ function ApplicationReview() {
   const chat = cur?.coffeeChatId ? chats[cur.coffeeChatId] : null;
 
   useEffect(() => { setNoteDraft(cur?.notes||''); }, [cur?.id]);
-  useEffect(() => { setIdx(0); setShowName(false); }, [JSON.stringify(filters)]);
+  useEffect(() => { setIdx(0); setRevealed(false); setShowResume(false); }, [JSON.stringify(filters)]);
 
   const setDecision = async d => {
     if (!cur) return;
@@ -833,7 +908,7 @@ function ApplicationReview() {
     catch { toast.error('Failed to save notes'); }
   };
 
-  const nav = d => { setIdx(i => Math.max(0, Math.min(filtered.length-1, i+d))); setShowName(false); };
+  const nav = d => { setIdx(i => Math.max(0, Math.min(filtered.length-1, i+d))); setRevealed(false); setShowResume(false); };
 
   useEffect(() => {
     const h = e => {
@@ -893,14 +968,22 @@ function ApplicationReview() {
               <div className="app-card">
                 <div className="app-card-head">
                   <div>
-                    <div className={`app-name ${!showName?'anon':''}`}>
-                      {showName ? cur.prospectName : `Applicant #${safeIdx+1}`}
+                    <div className={`app-name ${!revealed?'anon':''}`}>
+                      {revealed ? cur.prospectName : `Applicant #${safeIdx+1}`}
                     </div>
-                    <div className="app-meta">{cur.email}{cur.grade && ` · ${cur.grade}`}</div>
+                    <div className="app-meta">
+                      {revealed ? (
+                        <>
+                          {cur.email}
+                          {cur.studentEmail && cur.studentEmail.toLowerCase()!==(cur.email||'').toLowerCase() && ` · student: ${cur.studentEmail}`}
+                          {cur.grade && ` · ${cur.grade}`}
+                        </>
+                      ) : 'Identity hidden'}
+                    </div>
                   </div>
                   <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={()=>setShowName(s=>!s)}>
-                      {showName?<EyeOffIcon size={13}/>:<EyeIcon size={13}/>} {showName?'Hide':'Show'} Name
+                    <button className="btn btn-ghost btn-sm" onClick={()=>setRevealed(s=>!s)}>
+                      {revealed?<EyeOffIcon size={13}/>:<EyeIcon size={13}/>} {revealed?'Hide':'Show'} Identity
                     </button>
                     <button className="btn btn-ghost btn-sm" onClick={()=>setShowChat(s=>!s)}>
                       <CoffeeIcon size={13}/> {showChat?'Hide':'Show'} Chat
@@ -908,11 +991,19 @@ function ApplicationReview() {
                   </div>
                 </div>
 
+                {/* Membership Status */}
+                {cur.membershipStatus && (
+                  <div className="sec">
+                    <div className="sec-title">Membership Status</div>
+                    <span className="badge badge-gray">{cur.membershipStatus}</span>
+                  </div>
+                )}
+
                 {/* Rankings */}
                 <div className="sec">
                   <div className="sec-title">Team Rankings</div>
                   <div className="team-chips">
-                    {[['first','1st'],['second','2nd'],['third','3rd'],['fourth','4th']].map(([k,l]) =>
+                    {[['first','1st'],['second','2nd'],['third','3rd']].map(([k,l]) =>
                       cur.teamRankings?.[k] ? (
                         <div key={k} className="team-chip">
                           <span className="chip-rank">{l}</span>
@@ -922,6 +1013,14 @@ function ApplicationReview() {
                     )}
                   </div>
                 </div>
+
+                {/* Meeting Availability */}
+                {cur.meetingAvailability && (
+                  <div className="sec">
+                    <div className="sec-title">Can Make Bi-Weekly Meeting?</div>
+                    <p className="fr-a">{cur.meetingAvailability}</p>
+                  </div>
+                )}
 
                 {/* Free Responses */}
                 {cur.freeResponses?.length>0 && (
@@ -936,11 +1035,21 @@ function ApplicationReview() {
                   </div>
                 )}
 
+                {/* Comments / Concerns */}
+                {cur.commentsConcerns && (
+                  <div className="sec">
+                    <div className="sec-title">Comments / Concerns</div>
+                    <p className="fr-a">{cur.commentsConcerns}</p>
+                  </div>
+                )}
+
                 {/* Resume */}
                 {cur.resumePath && (
                   <div className="sec">
                     <div className="sec-title">Resume</div>
-                    <a href={cur.resumePath} target="_blank" rel="noopener noreferrer" className="resume-link"><PaperclipIcon size={13}/> View Resume</a>
+                    <button type="button" className="resume-link" style={{border:'none',cursor:'pointer'}} onClick={()=>setShowResume(true)}>
+                      <PaperclipIcon size={13}/> View Resume
+                    </button>
                   </div>
                 )}
 
@@ -996,6 +1105,23 @@ function ApplicationReview() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {showResume && cur?.resumePath && (
+        <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)setShowResume(false)}}>
+          <div className="modal modal-wide">
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+              <h2 style={{ marginBottom:0 }}>Resume</h2>
+              <button className="btn btn-ghost btn-sm" onClick={()=>setShowResume(false)}><XIcon size={14}/></button>
+            </div>
+            <iframe src={driveEmbedUrl(cur.resumePath)} title="Resume preview"
+              style={{ width:'100%', height:'75vh', border:'1px solid var(--g200)', borderRadius:8 }} />
+            <div className="modal-footer">
+              <a href={cur.resumePath} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">Open in new tab</a>
+              <button className="btn btn-primary" onClick={()=>setShowResume(false)}>Close</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
