@@ -654,7 +654,7 @@ function ApplicationUpload() {
   const { data: chatsRaw } = useFirebase('coffeeChats');
 
   const apps = appsRaw ? Object.entries(appsRaw).map(([id,v])=>({id,...v})).sort((a,b)=>b.createdAt-a.createdAt) : [];
-  const chats = chatsRaw ? Object.values(chatsRaw) : [];
+  const chats = chatsRaw ? Object.entries(chatsRaw).map(([id,v]) => ({ id, ...v })) : [];
 
   const matchChat = name => chats.find(c => normName(c.prospectName) === normName(name)) || null;
 
@@ -874,13 +874,21 @@ function ApplicationReview() {
   const { data: chatsRaw } = useFirebase('coffeeChats');
 
   const apps = appsRaw ? Object.entries(appsRaw).map(([id,v])=>({id,...v})).sort((a,b)=>(a.prospectName||'').localeCompare(b.prospectName||'')) : [];
-  const chats = chatsRaw || {};
+  const chats = chatsRaw ? Object.entries(chatsRaw).map(([id,v]) => ({ id, ...v })) : [];
   const teams = [...new Set(apps.map(a=>a.teamRankings?.first).filter(Boolean))].sort();
+
+  // Match live by prospect name rather than trusting a stored coffeeChatId —
+  // that field is set once at CSV-import time and misses chats logged after
+  // import (and historically was never set correctly, see ApplicationUpload).
+  const chatsForName = name => chats
+    .filter(c => normName(c.prospectName) === normName(name))
+    .sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
 
   const filtered = apps.filter(a => {
     if (filters.team && a.teamRankings?.first !== filters.team) return false;
-    if (filters.chat === 'has' && !a.coffeeChatId) return false;
-    if (filters.chat === 'none' && a.coffeeChatId) return false;
+    const hasChat = chatsForName(a.prospectName).length > 0;
+    if (filters.chat === 'has' && !hasChat) return false;
+    if (filters.chat === 'none' && hasChat) return false;
     if (filters.decision !== 'all' && (a.decision||'undecided') !== filters.decision) return false;
     if (filters.search) {
       const q = filters.search.toLowerCase();
@@ -891,7 +899,7 @@ function ApplicationReview() {
 
   const safeIdx = Math.min(idx, Math.max(0, filtered.length-1));
   const cur = filtered[safeIdx];
-  const chat = cur?.coffeeChatId ? chats[cur.coffeeChatId] : null;
+  const curChats = cur ? chatsForName(cur.prospectName) : [];
 
   useEffect(() => { setNoteDraft(cur?.notes||''); }, [cur?.id]);
   useEffect(() => { setIdx(0); setRevealed(false); setShowResume(false); }, [JSON.stringify(filters)]);
@@ -1081,25 +1089,27 @@ function ApplicationReview() {
           {/* Sidebar */}
           {showChat && (
             <div className="sidebar">
-              <h3><CoffeeIcon size={15}/> Coffee Chat</h3>
-              {chat ? (
-                <>
-                  <div style={{marginBottom:14}}>
-                    <p style={{fontSize:13,marginBottom:4}}><strong>Leader:</strong> {chat.leaderName||'—'}</p>
-                    <p style={{fontSize:13,marginBottom:4}}><strong>Date:</strong> {chat.date||'—'}</p>
-                    <p style={{fontSize:13}}><strong>Avg:</strong> <StarIcon size={11}/> {avg(chat.ratings)}</p>
-                  </div>
-                  {RATING_CATS.map(({key,label})=>(
-                    <div key={key} className="rrow"><span className="rlabel" style={{fontSize:12,width:130}}>{label}</span>
-                      <RBar value={chat.ratings?.[key]||0} /></div>
-                  ))}
-                  {chat.comments && (
-                    <div style={{marginTop:12}}>
-                      <div style={{fontSize:11,fontWeight:700,color:'var(--g400)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Comments</div>
-                      <blockquote style={{fontStyle:'italic',color:'var(--g600)',fontSize:13,borderLeft:'3px solid var(--g200)',paddingLeft:10,lineHeight:1.6}}>{chat.comments}</blockquote>
+              <h3><CoffeeIcon size={15}/> Coffee Chat{curChats.length>1 ? `s (${curChats.length})` : ''}</h3>
+              {curChats.length>0 ? (
+                curChats.map((chat,i) => (
+                  <div key={chat.id} style={i<curChats.length-1 ? { marginBottom:20, paddingBottom:16, borderBottom:'1px solid var(--g100)' } : undefined}>
+                    <div style={{marginBottom:14}}>
+                      <p style={{fontSize:13,marginBottom:4}}><strong>Leader:</strong> {chat.leaderName||'—'}</p>
+                      <p style={{fontSize:13,marginBottom:4}}><strong>Date:</strong> {chat.date||'—'}</p>
+                      <p style={{fontSize:13}}><strong>Avg:</strong> <StarIcon size={11}/> {avg(chat.ratings)}</p>
                     </div>
-                  )}
-                </>
+                    {RATING_CATS.map(({key,label})=>(
+                      <div key={key} className="rrow"><span className="rlabel" style={{fontSize:12,width:130}}>{label}</span>
+                        <RBar value={chat.ratings?.[key]||0} /></div>
+                    ))}
+                    {chat.comments && (
+                      <div style={{marginTop:12}}>
+                        <div style={{fontSize:11,fontWeight:700,color:'var(--g400)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>Comments</div>
+                        <blockquote style={{fontStyle:'italic',color:'var(--g600)',fontSize:13,borderLeft:'3px solid var(--g200)',paddingLeft:10,lineHeight:1.6}}>{chat.comments}</blockquote>
+                      </div>
+                    )}
+                  </div>
+                ))
               ) : (
                 <div className="empty" style={{padding:'24px 0'}}>No coffee chat recorded.</div>
               )}
