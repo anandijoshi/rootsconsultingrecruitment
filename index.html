@@ -161,10 +161,12 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 .inline-sel:focus{box-shadow:0 0 0 2px var(--primary)}
 .inline-notes{width:100%;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-size:13px;background:transparent;resize:none;font-family:inherit;outline:none;min-height:26px;overflow:hidden}
 .inline-notes:focus{border-color:var(--primary);background:#fff;box-shadow:0 0 0 2px rgba(79,70,229,.1)}
-.stat-pill{background:#fff;border:1px solid var(--g200);border-radius:10px;padding:10px 16px;cursor:pointer;transition:outline .1s}
+.stat-pill{background:#fff;border:1px solid var(--g200);border-radius:10px;padding:10px 30px 10px 16px;cursor:pointer;transition:outline .1s;position:relative}
 .stat-pill.sel{outline:2px solid var(--primary)}
 .stat-num{font-size:22px;font-weight:700}
 .stat-lbl{font-size:11px;color:var(--g500);margin-top:1px}
+.stat-copy{position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:var(--g400);padding:4px;border-radius:6px;display:flex}
+.stat-copy:hover{color:var(--primary);background:var(--g100)}
 
 /* ── Email ── */
 .email-compose{display:grid;grid-template-columns:320px 1fr;gap:18px;align-items:start}
@@ -262,9 +264,6 @@ const SettingsIcon = p => (
     <circle cx="12" cy="12" r="3"/>
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
   </Icon>
-);
-const MailIcon = p => (
-  <Icon {...p}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></Icon>
 );
 const SearchIcon = p => (
   <Icon {...p}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></Icon>
@@ -1241,6 +1240,15 @@ function DecisionTracker() {
 
   const counts = apps.reduce((acc,a)=>{const d=a.decision||'undecided';acc[d]=(acc[d]||0)+1;return acc},{});
 
+  const copyEmails = async d => {
+    const emails = apps.filter(a => (a.decision||'undecided')===d && a.email).map(a => a.email);
+    if (!emails.length) { toast.error(`No emails for ${DECISION_LABELS[d]}`); return; }
+    try {
+      await navigator.clipboard.writeText(emails.join(', '));
+      toast.success(`Copied ${emails.length} email${emails.length>1?'s':''}`);
+    } catch { toast.error('Failed to copy — clipboard access denied'); }
+  };
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
       <div className="page-header">
@@ -1253,6 +1261,10 @@ function DecisionTracker() {
           {['undecided','interview','push2nd','reject'].map(d=>(
             <div key={d} className={`stat-pill ${filters.decision===d?'sel':''}`}
               onClick={()=>setFilters(f=>({...f,decision:f.decision===d?'all':d}))}>
+              <button type="button" className="stat-copy" title={`Copy ${DECISION_LABELS[d]} emails`}
+                onClick={e=>{e.stopPropagation(); copyEmails(d);}}>
+                <CopyIcon size={12}/>
+              </button>
               <div className="stat-num">{counts[d]||0}</div>
               <div className="stat-lbl">{DECISION_LABELS[d]}</div>
             </div>
@@ -1331,254 +1343,6 @@ function DecisionTracker() {
               })}
             </tbody>
           </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  EMAIL DASHBOARD
-// ═══════════════════════════════════════════════════════════════
-const DEFAULT_TEMPLATES = {
-  interview: {
-    subject: 'Your Roots Application — Interview Invitation',
-    body: `Hi {{name}},\n\nWe're thrilled to let you know that after reviewing your application, we'd love to invite you to interview with our {{team}} team!\n\nWe'll reach out shortly with scheduling details. Feel free to reply with any questions.\n\nLooking forward to meeting you!\n\nWarm regards,\nThe Roots Recruitment Team`,
-  },
-  reject: {
-    subject: 'Your Roots Application',
-    body: `Hi {{name}},\n\nThank you so much for applying to Roots and for your interest in the {{team}} team. We received many outstanding applications this cycle.\n\nAfter careful consideration, we've decided not to move forward at this time. We encourage you to reapply in future cycles.\n\nWe truly appreciate your enthusiasm and wish you all the best.\n\nWarmly,\nThe Roots Recruitment Team`,
-  },
-};
-
-function fill(tpl, app) {
-  const name = app.prospectName || 'there';
-  const team = app.teamRankings?.first || 'your preferred team';
-  return {
-    subject: tpl.subject.replace(/\{\{name\}\}/g,name).replace(/\{\{team\}\}/g,team),
-    body: tpl.body.replace(/\{\{name\}\}/g,name).replace(/\{\{team\}\}/g,team),
-  };
-}
-
-function EmailDashboard() {
-  const [tab, setTab] = useState('compose');
-  const [decFilter, setDecFilter] = useState('interview');
-  const [selected, setSelected] = useState(new Set());
-  const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
-  const [editing, setEditing] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [previewId, setPreviewId] = useState(null);
-  const { data: appsRaw } = useFirebase('applications');
-  const { data: logRaw } = useFirebase('emailLog');
-
-  const apps = appsRaw ? Object.entries(appsRaw).map(([id,v])=>({id,...v})).sort((a,b)=>(a.prospectName||'').localeCompare(b.prospectName||'')) : [];
-  const log  = logRaw  ? Object.entries(logRaw).map(([id,v])=>({id,...v})).sort((a,b)=>b.sentAt-a.sentAt) : [];
-
-  const eligible = apps.filter(a => (a.decision||'undecided') === decFilter);
-  const tpl = templates[decFilter];
-
-  useEffect(() => setSelected(new Set()), [decFilter]);
-
-  const toggle = id => setSelected(s => { const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
-  const selAll = () => setSelected(new Set(eligible.map(a=>a.id)));
-  const clearSel = () => setSelected(new Set());
-
-  const previewApp = previewId ? eligible.find(a=>a.id===previewId) : eligible[0] || null;
-  const previewFilled = previewApp ? fill(tpl, previewApp) : null;
-
-  const sendEmails = async () => {
-    const toSend = eligible.filter(a => selected.has(a.id));
-    if (!toSend.length) { toast.error('No recipients selected'); return; }
-
-    const resendKey = localStorage.getItem('resend_api_key');
-    if (!resendKey) {
-      toast.error('No Resend API key configured — see Settings');
-      return;
-    }
-
-    setSending(true);
-    let ok=0, fail=0;
-    const now = Date.now();
-
-    for (const app of toSend) {
-      const { subject, body } = fill(tpl, app);
-      const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px;font-size:15px;line-height:1.65;color:#111">${body.split('\n\n').map(p=>`<p>${p.replace(/\n/g,'<br>')}</p>`).join('')}</body></html>`;
-      try {
-        const res = await fetch('https://api.resend.com/emails', {
-          method:'POST',
-          headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${resendKey}` },
-          body: JSON.stringify({ from: localStorage.getItem('from_email')||'Roots Recruitment <onboarding@resend.dev>', to:app.email, subject, html }),
-        });
-        const data = await res.json();
-        const success = res.ok && !data.error;
-        await db.ref('emailLog').push({ to:app.email, subject, applicantName:app.prospectName, decision:decFilter, success, resendId:data.id||null, error:data.message||null, sentAt:now });
-        success ? ok++ : fail++;
-      } catch(e) {
-        await db.ref('emailLog').push({ to:app.email, subject, applicantName:app.prospectName, decision:decFilter, success:false, error:e.message, sentAt:now });
-        fail++;
-      }
-    }
-
-    setSending(false);
-    if (fail===0) { toast.success(`Sent ${ok} emails!`); clearSel(); setTab('log'); }
-    else toast(`Sent ${ok}, failed ${fail} — check CORS / API key`, 'error');
-  };
-
-  const copyEmail = app => {
-    const { subject, body } = fill(tpl, app);
-    navigator.clipboard.writeText(`To: ${app.email}\nSubject: ${subject}\n\n${body}`)
-      .then(()=>toast.success('Copied to clipboard!'))
-      .catch(()=>toast.error('Copy failed'));
-  };
-
-  const copyAll = () => {
-    const toSend = eligible.filter(a => selected.has(a.id));
-    const text = toSend.map(app => {
-      const { subject, body } = fill(tpl, app);
-      return `To: ${app.email}\nSubject: ${subject}\n\n${body}`;
-    }).join('\n\n---\n\n');
-    navigator.clipboard.writeText(text)
-      .then(()=>toast.success(`Copied ${toSend.length} emails to clipboard!`))
-      .catch(()=>toast.error('Copy failed'));
-  };
-
-  return (
-    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-      <div className="page-header"><h2>Email Dashboard</h2></div>
-
-      <div className="email-tabs">
-        <button className={`etab ${tab==='compose'?'on':''}`} onClick={()=>setTab('compose')}><MailIcon size={13}/> Compose & Send</button>
-        <button className={`etab ${tab==='log'?'on':''}`} onClick={()=>setTab('log')}><ClipboardIcon size={13}/> Log ({log.length})</button>
-      </div>
-
-      {tab==='compose' && (
-        <div className="email-compose">
-          {/* Controls */}
-          <div className="panel" style={{ padding:18 }}>
-            <h3 style={{ marginBottom:14 }}>Recipients</h3>
-            <div className="form-group">
-              <label>Decision Filter</label>
-              <select value={decFilter} onChange={e=>setDecFilter(e.target.value)}>
-                <option value="interview">Interview</option>
-                <option value="reject">Reject</option>
-              </select>
-            </div>
-            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6 }}>
-              <button className="btn btn-ghost btn-sm" onClick={selAll}>All ({eligible.length})</button>
-              <button className="btn btn-ghost btn-sm" onClick={clearSel}>Clear</button>
-              <span style={{ fontSize:12, color:'var(--g500)' }}>{selected.size} selected</span>
-            </div>
-            <div className="app-pick-list">
-              {eligible.length===0
-                ? <p style={{fontSize:13,color:'var(--g400)',padding:'6px 0'}}>No "{decFilter}" applicants.</p>
-                : eligible.map(a=>(
-                  <div key={a.id} className="app-pick" onClick={()=>{toggle(a.id);setPreviewId(a.id)}}>
-                    <input type="checkbox" checked={selected.has(a.id)} onChange={()=>{}} onClick={e=>e.stopPropagation()} />
-                    <label>
-                      {a.prospectName}
-                      <span className="app-email-sm">{a.email}</span>
-                    </label>
-                  </div>
-                ))
-              }
-            </div>
-
-            {/* Template */}
-            <div style={{ borderTop:'1px solid var(--g200)', paddingTop:14, marginTop:8 }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-                <span style={{ fontSize:12, fontWeight:700, color:'var(--g700)' }}>Email Template</span>
-                <button className="btn btn-ghost btn-sm" onClick={()=>setEditing(e=>!e)}>{editing?'Done':'Edit'}</button>
-              </div>
-              {editing ? (
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <div className="form-group" style={{marginBottom:0}}>
-                    <label>Subject</label>
-                    <input type="text" value={tpl.subject}
-                      onChange={e=>setTemplates(t=>({...t,[decFilter]:{...t[decFilter],subject:e.target.value}}))} />
-                  </div>
-                  <div className="form-group" style={{marginBottom:0}}>
-                    <label>Body (use {'{{name}}'} and {'{{team}}'})</label>
-                    <textarea value={tpl.body} rows={10}
-                      onChange={e=>setTemplates(t=>({...t,[decFilter]:{...t[decFilter],body:e.target.value}}))} />
-                  </div>
-                  <button className="btn btn-ghost btn-sm"
-                    onClick={()=>setTemplates(t=>({...t,[decFilter]:DEFAULT_TEMPLATES[decFilter]}))}>Reset to Default</button>
-                </div>
-              ) : (
-                <div style={{ fontSize:12, color:'var(--g500)', lineHeight:1.5 }}>
-                  <p><strong>Subj:</strong> {tpl.subject}</p>
-                  <p style={{ marginTop:4 }}>{tpl.body.slice(0,100)}…</p>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display:'flex', gap:6, marginTop:14 }}>
-              <button className="btn btn-success" style={{ flex:1 }} onClick={sendEmails}
-                disabled={sending||selected.size===0}>
-                {sending?'Sending…':`Send to ${selected.size}`}
-              </button>
-              <button className="btn btn-secondary" onClick={copyAll}
-                disabled={selected.size===0} title="Copy email text to clipboard">
-                <CopyIcon size={13}/> Copy
-              </button>
-            </div>
-            <p style={{ fontSize:11, color:'var(--g400)', marginTop:6, textAlign:'center' }}>
-              Requires Resend API key in Settings · Or use Copy to send manually
-            </p>
-          </div>
-
-          {/* Preview */}
-          <div className="email-preview-box">
-            <div className="preview-head">
-              <strong style={{ fontSize:14 }}>Email Preview</strong>
-              {eligible.length>0 && (
-                <select value={previewId||''} onChange={e=>setPreviewId(e.target.value||null)}
-                  style={{ fontSize:12, padding:'3px 8px' }}>
-                  <option value="">First match</option>
-                  {eligible.map(a=><option key={a.id} value={a.id}>{a.prospectName}</option>)}
-                </select>
-              )}
-            </div>
-            {previewFilled ? (
-              <div className="preview-body-wrap">
-                <div className="preview-meta">
-                  <div>To: <strong>{previewApp?.email}</strong></div>
-                  <div style={{marginTop:2}}>Subject: <strong>{previewFilled.subject}</strong></div>
-                </div>
-                <div className="preview-text">{previewFilled.body}</div>
-                <button className="btn btn-ghost btn-sm" style={{ marginTop:10 }}
-                  onClick={()=>copyEmail(previewApp)}><CopyIcon size={13}/> Copy This Email</button>
-              </div>
-            ) : (
-              <div className="empty">Select a decision filter to preview.</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {tab==='log' && (
-        <div style={{ background:'#fff', border:'1px solid var(--g200)', borderRadius:12, overflow:'hidden' }}>
-          <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--g200)' }}>
-            <strong>Sent Emails ({log.length})</strong>
-          </div>
-          {log.length===0 ? <div className="empty">No emails sent yet.</div> : (
-            <div className="tbl-wrap" style={{ border:'none', borderRadius:0 }}>
-              <table><thead><tr>
-                <th>Sent At</th><th>To</th><th>Name</th><th>Decision</th><th>Subject</th><th>Status</th>
-              </tr></thead><tbody>
-                {log.map(e=>(
-                  <tr key={e.id}>
-                    <td style={{fontSize:12,color:'var(--g500)',whiteSpace:'nowrap'}}>{e.sentAt?new Date(e.sentAt).toLocaleString():'—'}</td>
-                    <td style={{fontSize:12}}>{e.to}</td>
-                    <td style={{fontWeight:500}}>{e.applicantName||'—'}</td>
-                    <td><span className={`dec-badge dec-${e.decision||'undecided'}`}>{e.decision ? (DECISION_LABELS[e.decision]||e.decision) : '—'}</span></td>
-                    <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12}}>{e.subject}</td>
-                    <td>{e.success?<span className="badge badge-ok">Sent</span>:<span className="badge" style={{background:'var(--danger-light)',color:'#991B1B'}} title={e.error}>Failed</span>}</td>
-                  </tr>
-                ))}
-              </tbody></table>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -1682,13 +1446,9 @@ function SetupModal({ onSave }) {
 function SettingsModal({ onClose }) {
   const saved = JSON.parse(localStorage.getItem('firebase_config')||'{}');
   const [cfg, setCfg] = useState(saved);
-  const [resendKey, setResendKey] = useState(localStorage.getItem('resend_api_key')||'');
-  const [fromEmail, setFromEmail] = useState(localStorage.getItem('from_email')||'');
 
   const save = () => {
     localStorage.setItem('firebase_config', JSON.stringify(cfg));
-    localStorage.setItem('resend_api_key', resendKey);
-    localStorage.setItem('from_email', fromEmail);
     toast.success('Settings saved — reload to apply Firebase changes');
     onClose();
   };
@@ -1706,21 +1466,6 @@ function SettingsModal({ onClose }) {
             <input type="text" value={cfg[k]||''} onChange={e=>setCfg(c=>({...c,[k]:e.target.value}))} />
           </div>
         ))}
-
-        <h3 style={{ fontSize:14, fontWeight:700, margin:'16px 0 10px' }}>Resend Email</h3>
-        <div className="step-box">
-          <p><strong>Optional:</strong> Add your Resend API key to enable sending emails directly from the dashboard. Get one free at <a href="https://resend.com" target="_blank" rel="noopener">resend.com</a>.<br/>
-          <strong>Note:</strong> CORS may block browser-side calls — use the Copy button as a reliable fallback.</p>
-        </div>
-        <div className="form-group">
-          <label>Resend API Key</label>
-          <input type="text" value={resendKey} placeholder="re_..." onChange={e=>setResendKey(e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>From Email (optional)</label>
-          <input type="text" value={fromEmail} placeholder="Roots Recruitment <you@yourdomain.com>"
-            onChange={e=>setFromEmail(e.target.value)} />
-        </div>
 
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -1755,7 +1500,6 @@ const TABS = [
   { id:'upload',    label:'Upload Apps',  icon: FileIcon },
   { id:'review',    label:'Review',       icon: SearchIcon },
   { id:'decisions', label:'Decisions',    icon: CheckCircleIcon },
-  { id:'email',     label:'Email',        icon: MailIcon },
 ];
 
 function App() {
@@ -1833,11 +1577,10 @@ function App() {
           <div className="empty" style={{padding:'100px 20px'}}>
             <p>Connecting to Firebase…</p>
           </div>
-        ) : tab==='coffee'    ? <CoffeeChatLog />
-          : tab==='upload'    ? <ApplicationUpload />
-          : tab==='review'    ? <ApplicationReview />
-          : tab==='decisions' ? <DecisionTracker />
-          : <EmailDashboard />
+        ) : tab==='coffee' ? <CoffeeChatLog />
+          : tab==='upload' ? <ApplicationUpload />
+          : tab==='review' ? <ApplicationReview />
+          : <DecisionTracker />
         }
       </main>
     </div>
