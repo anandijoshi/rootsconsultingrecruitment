@@ -322,6 +322,9 @@ const StarIcon = p => (
 const XIcon = p => (
   <Icon {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>
 );
+const FlagIcon = p => (
+  <Icon {...p}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></Icon>
+);
 
 // Converts any Google Drive share-link format (open?id=, file/d/…/view, uc?id=)
 // into the /preview form Drive will render inside an iframe.
@@ -1652,6 +1655,209 @@ function DecisionTracker() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  POST-R1 DECISIONS
+// ═══════════════════════════════════════════════════════════════
+function PostR1Decisions() {
+  const [filters, setFilters] = useState({ team:'', appDecision:'all', r1Decision:'all', decision:'all', search:'' });
+  const [sort, setSort] = useState({ field:'prospectName', dir:'asc' });
+  const [noteDrafts, setNoteDrafts] = useState({});
+  const timers = useRef({});
+  const { data: appsRaw } = useFirebase('applications');
+  const { data: r1Raw } = useFirebase('r1Interviews');
+
+  const apps = appsRaw ? Object.entries(appsRaw).map(([id,v])=>({id,...v})) : [];
+  const r1Entries = r1Raw ? Object.entries(r1Raw).map(([id,v])=>({id,...v})) : [];
+  const teams = [...new Set(apps.map(a=>a.teamRankings?.first).filter(Boolean))].sort();
+
+  // An applicant can in principle have more than one R1 entry (re-interviewed,
+  // etc.) — use the most recent one as "their" R1 result for this view.
+  const r1ForApp = appId => r1Entries
+    .filter(e => e.matchedApplicationId === appId)
+    .sort((a,b) => (b.createdAt||0)-(a.createdAt||0))[0] || null;
+
+  const filtered = apps.filter(a => {
+    if (filters.team && a.teamRankings?.first !== filters.team) return false;
+    if (filters.appDecision!=='all' && (a.decision||'undecided')!==filters.appDecision) return false;
+    const r1 = r1ForApp(a.id);
+    const r1d = r1?.r1Decision || 'undecided';
+    if (filters.r1Decision!=='all' && r1d!==filters.r1Decision) return false;
+    if (filters.decision!=='all' && (a.postR1Decision||'undecided')!==filters.decision) return false;
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      if (!(a.prospectName||'').toLowerCase().includes(q) && !(a.email||'').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  const srt = [...filtered].sort((a,b) => {
+    let va,vb;
+    if (sort.field==='decision') { va=a.postR1Decision||'undecided'; vb=b.postR1Decision||'undecided'; }
+    else if (sort.field==='appDecision') { va=a.decision||'undecided'; vb=b.decision||'undecided'; }
+    else if (sort.field==='r1Decision') { va=r1ForApp(a.id)?.r1Decision||'undecided'; vb=r1ForApp(b.id)?.r1Decision||'undecided'; }
+    else if (sort.field==='team') { va=a.teamRankings?.first||''; vb=b.teamRankings?.first||''; }
+    else { va=a.prospectName||''; vb=b.prospectName||''; }
+    if (va<vb) return sort.dir==='asc'?-1:1;
+    if (va>vb) return sort.dir==='asc'?1:-1;
+    return 0;
+  });
+
+  const toggleSort = field => setSort(s => ({ field, dir: s.field===field&&s.dir==='asc'?'desc':'asc' }));
+  const si = f => sort.field===f?(sort.dir==='asc'?' ↑':' ↓'):' ↕';
+
+  // postR1Decision is its own status field (like r1Decision) — no team-swap
+  // side effect, so it can't double-swap a team the application-stage
+  // decision may have already pushed to 2nd choice.
+  const setPostR1Decision = async (id, d) => {
+    try { await db.ref(`applications/${id}`).update({ postR1Decision:d }); }
+    catch { toast.error('Failed'); }
+  };
+
+  const updateNote = (id, val) => {
+    setNoteDrafts(n => ({ ...n, [id]: val }));
+    clearTimeout(timers.current[id]);
+    timers.current[id] = setTimeout(async () => {
+      try { await db.ref(`applications/${id}`).update({ notes:val }); }
+      catch { toast.error('Failed to save notes'); }
+    }, 700);
+  };
+
+  const noteVal = a => noteDrafts[a.id]!==undefined ? noteDrafts[a.id] : (a.notes||'');
+
+  const exportCSV = () => {
+    const rows = srt.map(a => {
+      const r1 = r1ForApp(a.id);
+      return {
+        Name:a.prospectName, Email:a.email, '1st Choice':a.teamRankings?.first||'',
+        'App Decision':DECISION_LABELS[a.decision||'undecided'],
+        'R1 Decision':DECISION_LABELS[r1?.r1Decision||'undecided'],
+        'Post-R1 Decision':DECISION_LABELS[a.postR1Decision||'undecided'],
+        Notes:a.notes||'',
+      };
+    });
+    const csv = Papa.unparse(rows);
+    const blob = new Blob([csv], { type:'text/csv' });
+    const url = URL.createObjectURL(blob);
+    Object.assign(document.createElement('a'), { href:url, download:`post_r1_decisions_${new Date().toISOString().split('T')[0]}.csv` }).click();
+    URL.revokeObjectURL(url);
+    toast.success('Exported!');
+  };
+
+  const counts = apps.reduce((acc,a)=>{const d=a.postR1Decision||'undecided';acc[d]=(acc[d]||0)+1;return acc},{});
+
+  const copyEmails = async d => {
+    const emails = apps.filter(a => (a.postR1Decision||'undecided')===d && a.email).map(a => a.email);
+    if (!emails.length) { toast.error(`No emails for ${DECISION_LABELS[d]}`); return; }
+    try {
+      await navigator.clipboard.writeText(emails.join(', '));
+      toast.success(`Copied ${emails.length} email${emails.length>1?'s':''}`);
+    } catch { toast.error('Failed to copy — clipboard access denied'); }
+  };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div className="page-header">
+        <h2>Post-R1 Decisions</h2>
+        <button className="btn btn-secondary" onClick={exportCSV} disabled={!srt.length}>↓ Export CSV</button>
+      </div>
+
+      {apps.length>0 && (
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          {['undecided','interview','push2nd','reject'].map(d=>(
+            <div key={d} className={`stat-pill ${filters.decision===d?'sel':''}`}
+              onClick={()=>setFilters(f=>({...f,decision:f.decision===d?'all':d}))}>
+              <button type="button" className="stat-copy" title={`Copy ${DECISION_LABELS[d]} emails`}
+                onClick={e=>{e.stopPropagation(); copyEmails(d);}}>
+                <CopyIcon size={12}/>
+              </button>
+              <div className="stat-num">{counts[d]||0}</div>
+              <div className="stat-lbl">{DECISION_LABELS[d]}</div>
+            </div>
+          ))}
+          <div className="stat-pill"><div className="stat-num">{apps.length}</div><div className="stat-lbl">Total</div></div>
+        </div>
+      )}
+
+      <div className="filter-bar">
+        <input type="text" placeholder="Search…" value={filters.search}
+          onChange={e=>setFilters(f=>({...f,search:e.target.value}))} />
+        <select value={filters.team} onChange={e=>setFilters(f=>({...f,team:e.target.value}))}>
+          <option value="">All Teams</option>{teams.map(t=><option key={t}>{t}</option>)}
+        </select>
+        <select value={filters.appDecision} onChange={e=>setFilters(f=>({...f,appDecision:e.target.value}))}>
+          <option value="all">All App Decisions</option>
+          <option value="undecided">Undecided</option>
+          <option value="interview">Interview</option>
+          <option value="push2nd">Push to 2nd Choice</option>
+          <option value="reject">Reject</option>
+        </select>
+        <select value={filters.r1Decision} onChange={e=>setFilters(f=>({...f,r1Decision:e.target.value}))}>
+          <option value="all">All R1 Decisions</option>
+          <option value="undecided">Undecided</option>
+          <option value="interview">Interview</option>
+          <option value="push2nd">Push to 2nd Choice</option>
+          <option value="reject">Reject</option>
+        </select>
+        <span className="filter-count">{srt.length} shown</span>
+      </div>
+
+      {apps.length===0 ? (
+        <div className="empty" style={{padding:'80px 20px'}}>No applications yet. Upload a CSV first.</div>
+      ) : (
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th style={{width:32}}>#</th>
+              <th className="sortable" onClick={()=>toggleSort('prospectName')}>Name{si('prospectName')}</th>
+              <th>Email</th>
+              <th className="sortable" onClick={()=>toggleSort('team')}>1st Choice{si('team')}</th>
+              <th className="sortable" onClick={()=>toggleSort('appDecision')}>App Decision{si('appDecision')}</th>
+              <th className="sortable" onClick={()=>toggleSort('r1Decision')}>R1 Decision{si('r1Decision')}</th>
+              <th className="sortable" onClick={()=>toggleSort('decision')}>Post-R1 Decision{si('decision')}</th>
+              <th style={{minWidth:200}}>Notes</th>
+            </tr></thead>
+            <tbody>
+              {srt.map((a,i)=>{
+                const r1 = r1ForApp(a.id);
+                const appD = a.decision||'undecided';
+                const r1D = r1?.r1Decision||'undecided';
+                const d = a.postR1Decision||'undecided';
+                return (
+                  <tr key={a.id}>
+                    <td style={{color:'var(--g400)',fontSize:12}}>{i+1}</td>
+                    <td style={{fontWeight:500}}>{a.prospectName}</td>
+                    <td style={{color:'var(--g500)',fontSize:12}}>{a.email}</td>
+                    <td>{a.teamRankings?.first||'—'}</td>
+                    <td><span className={`dec-badge dec-${appD}`}>{DECISION_LABELS[appD]}</span></td>
+                    <td>{r1
+                      ? <span className={`dec-badge dec-${r1D}`}>{DECISION_LABELS[r1D]}</span>
+                      : <span className="badge badge-gray">No R1</span>}
+                    </td>
+                    <td>
+                      <select className={`inline-sel dec-badge dec-${d}`} value={d}
+                        onChange={e=>setPostR1Decision(a.id,e.target.value)}>
+                        {['undecided','interview','push2nd','reject'].map(x=>(
+                          <option key={x} value={x}>{DECISION_LABELS[x]}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <textarea className="inline-notes" value={noteVal(a)}
+                        onChange={e=>updateNote(a.id,e.target.value)}
+                        placeholder="Add notes…" rows={1}
+                        onFocus={e=>e.target.rows=3} onBlur={e=>e.target.rows=1} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  SETUP MODAL
 // ═══════════════════════════════════════════════════════════════
 function SetupModal({ onSave }) {
@@ -1798,11 +2004,12 @@ const FIREBASE_CONFIG = {
 //  APP ROOT
 // ═══════════════════════════════════════════════════════════════
 const TABS = [
-  { id:'coffee',    label:'Coffee Chats', icon: CoffeeIcon },
-  { id:'upload',    label:'Upload Apps',  icon: FileIcon },
-  { id:'review',    label:'Review',       icon: SearchIcon },
-  { id:'r1',        label:'R1 Interviews',icon: ClipboardIcon },
-  { id:'decisions', label:'Decisions',    icon: CheckCircleIcon },
+  { id:'coffee',    label:'Coffee Chats',     icon: CoffeeIcon },
+  { id:'upload',    label:'Upload Apps',      icon: FileIcon },
+  { id:'review',    label:'Review',           icon: SearchIcon },
+  { id:'decisions', label:'Decisions',        icon: CheckCircleIcon },
+  { id:'r1',        label:'R1 Interviews',    icon: ClipboardIcon },
+  { id:'postr1',    label:'Post-R1',          icon: FlagIcon },
 ];
 
 function App() {
@@ -1883,8 +2090,9 @@ function App() {
         ) : tab==='coffee' ? <CoffeeChatLog />
           : tab==='upload' ? <ApplicationUpload />
           : tab==='review' ? <ApplicationReview />
+          : tab==='decisions' ? <DecisionTracker />
           : tab==='r1' ? <R1Interviews />
-          : <DecisionTracker />
+          : <PostR1Decisions />
         }
       </main>
     </div>
