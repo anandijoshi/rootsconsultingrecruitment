@@ -76,7 +76,7 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 .badge-gray{background:var(--g100);color:var(--g500)}
 .dec-badge{display:inline-block;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .dec-interview{background:var(--success-light);color:#065F46}
-.dec-revisit{background:var(--warning-light);color:#92400E}
+.dec-push2nd{background:var(--warning-light);color:#92400E}
 .dec-reject{background:var(--danger-light);color:#991B1B}
 .dec-undecided{background:var(--g100);color:var(--g500)}
 
@@ -147,8 +147,8 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 .dec-btn{padding:7px 18px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;border:2px solid transparent;transition:all .15s}
 .dec-btn-interview{background:var(--success-light);color:#065F46}
 .dec-btn-interview.on{border-color:var(--success);box-shadow:0 0 0 2px rgba(16,185,129,.2)}
-.dec-btn-revisit{background:var(--warning-light);color:#92400E}
-.dec-btn-revisit.on{border-color:var(--warning);box-shadow:0 0 0 2px rgba(245,158,11,.2)}
+.dec-btn-push2nd{background:var(--warning-light);color:#92400E}
+.dec-btn-push2nd.on{border-color:var(--warning);box-shadow:0 0 0 2px rgba(245,158,11,.2)}
 .dec-btn-reject{background:var(--danger-light);color:#991B1B}
 .dec-btn-reject.on{border-color:var(--danger);box-shadow:0 0 0 2px rgba(239,68,68,.2)}
 .dec-btn-undecided{background:var(--g100);color:var(--g500)}
@@ -164,7 +164,7 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 .stat-pill{background:#fff;border:1px solid var(--g200);border-radius:10px;padding:10px 16px;cursor:pointer;transition:outline .1s}
 .stat-pill.sel{outline:2px solid var(--primary)}
 .stat-num{font-size:22px;font-weight:700}
-.stat-lbl{font-size:11px;color:var(--g500);text-transform:capitalize;margin-top:1px}
+.stat-lbl{font-size:11px;color:var(--g500);margin-top:1px}
 
 /* ── Email ── */
 .email-compose{display:grid;grid-template-columns:320px 1fr;gap:18px;align-items:start}
@@ -363,6 +363,25 @@ function avg(ratings) {
 }
 
 function normName(n) { return (n || '').toLowerCase().trim().replace(/\s+/g, ' '); }
+
+const DECISION_LABELS = { undecided:'Undecided', interview:'Interview', push2nd:'Push to 2nd Choice', reject:'Reject' };
+
+// "Push to 2nd Choice" swaps the applicant's 2nd choice into their tracked
+// 1st-choice slot (and vice versa) the moment the decision is set, so
+// Decision Tracker/filters/exports reflect the team they're actually being
+// routed to. Guarded on the previous decision so re-clicking the same
+// button doesn't swap the pair back and forth.
+function decisionUpdatePayload(app, d) {
+  const updates = { decision: d };
+  if (d === 'push2nd' && app?.decision !== 'push2nd' && app?.teamRankings?.second) {
+    updates.teamRankings = {
+      ...app.teamRankings,
+      first: app.teamRankings.second,
+      second: app.teamRankings.first,
+    };
+  }
+  return updates;
+}
 
 // ── Star Rating ─────────────────────────────────────────────────
 function Stars({ value, onChange, readOnly }) {
@@ -847,7 +866,7 @@ function ApplicationUpload() {
                   <td>{a.grade||'—'}</td>
                   <td>{a.teamRankings?.first||'—'}</td>
                   <td>{a.coffeeChatId?<span className="badge badge-ok">✓</span>:<span className="badge badge-gray">None</span>}</td>
-                  <td><span className={`dec-badge dec-${a.decision||'undecided'}`}>{a.decision||'undecided'}</span></td>
+                  <td><span className={`dec-badge dec-${a.decision||'undecided'}`}>{DECISION_LABELS[a.decision||'undecided']}</span></td>
                   <td style={{color:'var(--g400)',fontSize:12}}>{a.createdAt?new Date(a.createdAt).toLocaleDateString():'—'}</td>
                   <td><button className="btn btn-ghost btn-sm" onClick={()=>del(a.id)}>✕</button></td>
                 </tr>
@@ -906,7 +925,11 @@ function ApplicationReview() {
 
   const setDecision = async d => {
     if (!cur) return;
-    try { await db.ref(`applications/${cur.id}`).update({ decision:d }); toast.success(`Marked: ${d}`); }
+    try {
+      const updates = decisionUpdatePayload(cur, d);
+      await db.ref(`applications/${cur.id}`).update(updates);
+      toast.success(updates.teamRankings ? `Pushed to 2nd choice: ${updates.teamRankings.first}` : `Marked: ${DECISION_LABELS[d]||d}`);
+    }
     catch { toast.error('Failed'); }
   };
 
@@ -924,7 +947,7 @@ function ApplicationReview() {
       if (e.key==='ArrowLeft'||e.key==='ArrowUp') nav(-1);
       if (e.key==='ArrowRight'||e.key==='ArrowDown') nav(1);
       if (e.key==='1') setDecision('interview');
-      if (e.key==='2') setDecision('revisit');
+      if (e.key==='2') setDecision('push2nd');
       if (e.key==='3') setDecision('reject');
     };
     window.addEventListener('keydown', h);
@@ -949,11 +972,11 @@ function ApplicationReview() {
           <option value="all">All Decisions</option>
           <option value="undecided">Undecided</option>
           <option value="interview">Interview</option>
-          <option value="revisit">Revisit</option>
+          <option value="push2nd">Push to 2nd Choice</option>
           <option value="reject">Reject</option>
         </select>
         <span className="filter-count">{filtered.length} applicants</span>
-        <span style={{fontSize:11,color:'var(--g400)'}}>← → keys · 1=Interview 2=Revisit 3=Reject</span>
+        <span style={{fontSize:11,color:'var(--g400)'}}>← → keys · 1=Interview 2=Push 2nd 3=Reject</span>
       </div>
 
       {apps.length===0 ? (
@@ -1074,11 +1097,11 @@ function ApplicationReview() {
                 <div className="sec" style={{ background:'var(--g50)' }}>
                   <div className="sec-title">Decision</div>
                   <div className="dec-btns">
-                    {['interview','revisit','reject','undecided'].map(d=>(
+                    {['interview','push2nd','reject','undecided'].map(d=>(
                       <button key={d}
                         className={`dec-btn dec-btn-${d} ${(cur.decision||'undecided')===d?'on':''}`}
                         onClick={()=>setDecision(d)}
-                      >{d.charAt(0).toUpperCase()+d.slice(1)}</button>
+                      >{DECISION_LABELS[d]}</button>
                     ))}
                   </div>
                 </div>
@@ -1183,7 +1206,10 @@ function DecisionTracker() {
   const si = f => sort.field===f?(sort.dir==='asc'?' ↑':' ↓'):' ↕';
 
   const setDecision = async (id, d) => {
-    try { await db.ref(`applications/${id}`).update({ decision:d }); }
+    try {
+      const app = apps.find(x => x.id === id);
+      await db.ref(`applications/${id}`).update(decisionUpdatePayload(app, d));
+    }
     catch { toast.error('Failed'); }
   };
 
@@ -1224,11 +1250,11 @@ function DecisionTracker() {
 
       {apps.length>0 && (
         <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-          {['undecided','interview','revisit','reject'].map(d=>(
+          {['undecided','interview','push2nd','reject'].map(d=>(
             <div key={d} className={`stat-pill ${filters.decision===d?'sel':''}`}
               onClick={()=>setFilters(f=>({...f,decision:f.decision===d?'all':d}))}>
               <div className="stat-num">{counts[d]||0}</div>
-              <div className="stat-lbl">{d}</div>
+              <div className="stat-lbl">{DECISION_LABELS[d]}</div>
             </div>
           ))}
           <div className="stat-pill"><div className="stat-num">{apps.length}</div><div className="stat-lbl">Total</div></div>
@@ -1250,7 +1276,7 @@ function DecisionTracker() {
           <option value="all">All Decisions</option>
           <option value="undecided">Undecided</option>
           <option value="interview">Interview</option>
-          <option value="revisit">Revisit</option>
+          <option value="push2nd">Push to 2nd Choice</option>
           <option value="reject">Reject</option>
         </select>
         <span className="filter-count">{srt.length} shown</span>
@@ -1289,8 +1315,8 @@ function DecisionTracker() {
                     <td>
                       <select className={`inline-sel dec-badge dec-${d}`} value={d}
                         onChange={e=>setDecision(a.id,e.target.value)}>
-                        {['undecided','interview','revisit','reject'].map(x=>(
-                          <option key={x} value={x}>{x.charAt(0).toUpperCase()+x.slice(1)}</option>
+                        {['undecided','interview','push2nd','reject'].map(x=>(
+                          <option key={x} value={x}>{DECISION_LABELS[x]}</option>
                         ))}
                       </select>
                     </td>
@@ -1318,10 +1344,6 @@ const DEFAULT_TEMPLATES = {
   interview: {
     subject: 'Your Roots Application — Interview Invitation',
     body: `Hi {{name}},\n\nWe're thrilled to let you know that after reviewing your application, we'd love to invite you to interview with our {{team}} team!\n\nWe'll reach out shortly with scheduling details. Feel free to reply with any questions.\n\nLooking forward to meeting you!\n\nWarm regards,\nThe Roots Recruitment Team`,
-  },
-  revisit: {
-    subject: 'Your Roots Application — A Quick Follow-Up',
-    body: `Hi {{name}},\n\nThank you for applying to Roots and for your interest in the {{team}} team!\n\nWe'd love to learn more about you before making our final decision. We'll reach out soon to schedule a brief follow-up conversation.\n\nBest,\nThe Roots Recruitment Team`,
   },
   reject: {
     subject: 'Your Roots Application',
@@ -1438,7 +1460,6 @@ function EmailDashboard() {
               <label>Decision Filter</label>
               <select value={decFilter} onChange={e=>setDecFilter(e.target.value)}>
                 <option value="interview">Interview</option>
-                <option value="revisit">Revisit</option>
                 <option value="reject">Reject</option>
               </select>
             </div>
@@ -1550,7 +1571,7 @@ function EmailDashboard() {
                     <td style={{fontSize:12,color:'var(--g500)',whiteSpace:'nowrap'}}>{e.sentAt?new Date(e.sentAt).toLocaleString():'—'}</td>
                     <td style={{fontSize:12}}>{e.to}</td>
                     <td style={{fontWeight:500}}>{e.applicantName||'—'}</td>
-                    <td><span className={`dec-badge dec-${e.decision||'undecided'}`}>{e.decision||'—'}</span></td>
+                    <td><span className={`dec-badge dec-${e.decision||'undecided'}`}>{e.decision ? (DECISION_LABELS[e.decision]||e.decision) : '—'}</span></td>
                     <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:12}}>{e.subject}</td>
                     <td>{e.success?<span className="badge badge-ok">Sent</span>:<span className="badge" style={{background:'var(--danger-light)',color:'#991B1B'}} title={e.error}>Failed</span>}</td>
                   </tr>
