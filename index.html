@@ -74,6 +74,7 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600}
 .badge-ok{background:var(--success-light);color:#065F46}
 .badge-gray{background:var(--g100);color:var(--g500)}
+.badge-warn{background:var(--warning-light);color:#92400E}
 .dec-badge{display:inline-block;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .dec-interview{background:var(--success-light);color:#065F46}
 .dec-push2nd{background:var(--warning-light);color:#92400E}
@@ -353,6 +354,14 @@ const RATING_CATS = [
   { key: 'passionWorkEthic', label: 'Passion / Work Ethic' },
   { key: 'preparedness', label: 'Chat Preparedness' },
   { key: 'cultureFit', label: 'Culture Fit' },
+];
+
+const R1_RATING_CATS = [
+  { key: 'missionAlignment', label: 'Mission Alignment' },
+  { key: 'passionWorkEthic', label: 'Passion / Work Ethic' },
+  { key: 'cultureFit', label: 'Culture Fit' },
+  { key: 'preparedness', label: 'Preparedness' },
+  { key: 'collaboration', label: 'Collaboration' },
 ];
 
 function avg(ratings) {
@@ -1161,6 +1170,299 @@ function ApplicationReview() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  R1 INTERVIEWS
+// ═══════════════════════════════════════════════════════════════
+function R1Interviews() {
+  const [preview, setPreview] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef();
+  const [idx, setIdx] = useState(0);
+  const [filters, setFilters] = useState({ decision:'all', search:'' });
+  const { data: r1Raw } = useFirebase('r1Interviews');
+  const { data: appsRaw } = useFirebase('applications');
+
+  const entries = r1Raw ? Object.entries(r1Raw).map(([id,v])=>({id,...v})).sort((a,b)=>b.createdAt-a.createdAt) : [];
+  const apps = appsRaw ? Object.entries(appsRaw).map(([id,v])=>({id,...v})) : [];
+
+  // Form only asks for the applicant's name/email (no shared id with the
+  // applications collection), so match by name first, falling back to
+  // email — same precedence used for coffee chats.
+  const matchApplication = (name, email) => {
+    let m = apps.find(a => normName(a.prospectName) === normName(name));
+    if (!m && email) m = apps.find(a => (a.email||'').toLowerCase().trim() === email.toLowerCase().trim());
+    return m || null;
+  };
+
+  const parseFile = file => {
+    if (!file?.name.endsWith('.csv')) { toast.error('Please upload a .csv file'); return; }
+    Papa.parse(file, {
+      header:false, skipEmptyLines:true,
+      complete: ({ data }) => {
+        if (data.length < 2) { toast.error('CSV is empty'); return; }
+        const headers = data[0];
+        const rows = data.slice(1);
+
+        const iName = findIdx(headers, h => headerHas(h,'applicant') && headerHas(h,'name'));
+        const iEmail = findIdx(headers, h => headerHas(h,'applicant') && headerHas(h,'email'));
+        const iInt1 = findIdx(headers, h => headerHas(h,'interviewer') && headerHas(h,'1'));
+        const iInt2 = findIdx(headers, h => headerHas(h,'interviewer') && headerHas(h,'2'));
+        const iChoice1 = findIdx(headers, h => headerHas(h,'1st choice'));
+        const iChoice2 = findIdx(headers, h => headerHas(h,'2nd choice'));
+        const iMission = findIdx(headers, h => headerHas(h,'mission alignment'));
+        const iPassion = findIdx(headers, h => headerHas(h,'passion'));
+        const iCulture = findIdx(headers, h => headerHas(h,'culture fit'));
+        const iPrep = findIdx(headers, h => headerHas(h,'preparedness'));
+        const iCollab = findIdx(headers, h => headerHas(h,'collaboration'));
+
+        const mappedIdx = new Set(
+          [iName,iEmail,iInt1,iInt2,iChoice1,iChoice2,iMission,iPassion,iCulture,iPrep,iCollab].filter(i=>i>=0)
+        );
+
+        const parsed = rows.map(row => {
+          const applicantName = iName>=0 ? (row[iName]||'').trim() : '';
+          const applicantEmail = iEmail>=0 ? (row[iEmail]||'').trim() : '';
+          const match = matchApplication(applicantName, applicantEmail);
+
+          const freeResponses = headers
+            .map((h,i) => ({ h, i }))
+            .filter(({h,i}) => h && !mappedIdx.has(i))
+            .map(({h,i}) => ({ question: h, answer: (row[i]||'').trim() }))
+            .filter(x => x.answer);
+
+          return {
+            applicantName, applicantEmail,
+            interviewer1: iInt1>=0 ? (row[iInt1]||'').trim() : '',
+            interviewer2: iInt2>=0 ? (row[iInt2]||'').trim() : '',
+            choice1: iChoice1>=0 ? (row[iChoice1]||'').trim() : '',
+            choice2: iChoice2>=0 ? (row[iChoice2]||'').trim() : '',
+            ratings: {
+              missionAlignment: parseInt(row[iMission],10)||0,
+              passionWorkEthic: parseInt(row[iPassion],10)||0,
+              cultureFit: parseInt(row[iCulture],10)||0,
+              preparedness: parseInt(row[iPrep],10)||0,
+              collaboration: parseInt(row[iCollab],10)||0,
+            },
+            freeResponses,
+            matchedApplicationId: match?.id || null,
+            r1Decision: 'undecided',
+            createdAt: Date.now(),
+          };
+        }).filter(e => e.applicantName || e.applicantEmail);
+
+        setPreview(parsed);
+        toast.success(`Parsed ${parsed.length} interview entries`);
+      },
+      error: err => toast.error('Parse error: ' + err.message),
+    });
+  };
+
+  const doImport = async () => {
+    if (!preview) return;
+    setImporting(true);
+    try {
+      for (const e of preview) await db.ref('r1Interviews').push(e);
+      toast.success(`Imported ${preview.length} interview entries!`);
+      setPreview(null);
+    } catch(err) { toast.error(err.message); }
+    setImporting(false);
+  };
+
+  const del = async id => {
+    if (!confirm('Delete this interview entry?')) return;
+    try { await db.ref(`r1Interviews/${id}`).remove(); toast.success('Deleted'); }
+    catch { toast.error('Failed'); }
+  };
+
+  const clearAll = async () => {
+    if (!confirm(`Delete ALL ${entries.length} interview entries?`)) return;
+    try {
+      for (const e of entries) await db.ref(`r1Interviews/${e.id}`).remove();
+      toast.success('Cleared');
+    } catch { toast.error('Failed'); }
+  };
+
+  // r1Decision is tracked on the interview entry itself, independent of the
+  // application's own `decision` field, per your call to keep the two
+  // pipeline stages comparable rather than one overwriting the other.
+  const setR1Decision = async (id, d) => {
+    try { await db.ref(`r1Interviews/${id}`).update({ r1Decision:d }); }
+    catch { toast.error('Failed'); }
+  };
+
+  const filtered = entries.filter(e => {
+    if (filters.decision!=='all' && (e.r1Decision||'undecided')!==filters.decision) return false;
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      if (!(e.applicantName||'').toLowerCase().includes(q) && !(e.applicantEmail||'').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  const safeIdx = Math.min(idx, Math.max(0, filtered.length-1));
+  const cur = filtered[safeIdx];
+  const matchedApp = cur?.matchedApplicationId ? apps.find(a=>a.id===cur.matchedApplicationId) : null;
+
+  const nav = d => setIdx(i => Math.max(0, Math.min(filtered.length-1, i+d)));
+  useEffect(() => { setIdx(0); }, [JSON.stringify(filters)]);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      <div className="page-header">
+        <h2>R1 Interviews</h2>
+      </div>
+
+      {!preview && (
+        <div className={`drop-zone ${dragOver?'over':''}`}
+          onDragOver={e=>{e.preventDefault();setDragOver(true)}}
+          onDragLeave={()=>setDragOver(false)}
+          onDrop={e=>{e.preventDefault();setDragOver(false);parseFile(e.dataTransfer.files[0])}}
+          onClick={()=>fileRef.current?.click()}
+        >
+          <div className="drop-icon"><FileIcon size={28}/></div>
+          <p><strong>Drop your R1 Interview CSV here</strong> or click to browse</p>
+          <p style={{ fontSize:12, marginTop:4, color:'var(--g400)' }}>Export the R1 interview form's response sheet as CSV and drop it in as-is — every column is picked up automatically, matched to applicants by name (falling back to email).</p>
+          <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}}
+            onChange={e=>parseFile(e.target.files[0])} />
+        </div>
+      )}
+
+      {preview && (
+        <div style={{ background:'#fff', border:'1px solid var(--g200)', borderRadius:12, overflow:'hidden' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', borderBottom:'1px solid var(--g200)', gap:12 }}>
+            <div>
+              <strong>{preview.length} interview entries ready to import</strong>
+              <div style={{ fontSize:12, color:'var(--g500)', marginTop:2 }}>
+                {preview.filter(e=>e.matchedApplicationId).length} matched to applications · {preview.filter(e=>!e.matchedApplicationId).length} unmatched
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button className="btn btn-secondary" onClick={()=>setPreview(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={doImport} disabled={importing}>
+                {importing ? 'Importing…' : `Import ${preview.length}`}
+              </button>
+            </div>
+          </div>
+          <div className="tbl-wrap" style={{ border:'none', borderRadius:0 }}>
+            <table><thead><tr>
+              <th>Applicant</th><th>Interviewer 1</th><th>Interviewer 2</th><th>Avg Rating</th><th>Application</th>
+            </tr></thead><tbody>
+              {preview.map((e,i) => (
+                <tr key={i}>
+                  <td style={{fontWeight:500}}>{e.applicantName||e.applicantEmail||'—'}</td>
+                  <td>{e.interviewer1||'—'}</td>
+                  <td>{e.interviewer2||'—'}</td>
+                  <td>⭐ {avg(e.ratings)}</td>
+                  <td>{e.matchedApplicationId?<span className="badge badge-ok">✓ Matched</span>:<span className="badge badge-warn">No match</span>}</td>
+                </tr>
+              ))}
+            </tbody></table>
+          </div>
+        </div>
+      )}
+
+      {entries.length > 0 && !preview && (
+        <>
+          <div className="filter-bar">
+            <input type="text" placeholder="Search applicant name or email…" value={filters.search}
+              onChange={e => setFilters(f=>({...f,search:e.target.value}))} />
+            <select value={filters.decision} onChange={e=>setFilters(f=>({...f,decision:e.target.value}))}>
+              <option value="all">All Decisions</option>
+              <option value="undecided">Undecided</option>
+              <option value="interview">Interview</option>
+              <option value="push2nd">Push to 2nd Choice</option>
+              <option value="reject">Reject</option>
+            </select>
+            <span className="filter-count">{filtered.length} entries</span>
+            <button className="btn btn-danger btn-sm" onClick={clearAll}>Clear All</button>
+          </div>
+
+          {filtered.length===0 ? (
+            <div className="empty" style={{padding:'80px 20px'}}>No entries match your filters.</div>
+          ) : (
+            <>
+              <div className="rev-nav">
+                <button className="btn btn-secondary" onClick={()=>nav(-1)} disabled={safeIdx===0}>← Prev</button>
+                <span className="nav-ctr">{safeIdx+1} of {filtered.length}</span>
+                <button className="btn btn-secondary" onClick={()=>nav(1)} disabled={safeIdx===filtered.length-1}>Next →</button>
+              </div>
+
+              {cur && (
+                <div className="app-card">
+                  <div className="app-card-head">
+                    <div>
+                      <div className="app-name">{cur.applicantName || 'Unknown Applicant'}</div>
+                      <div className="app-meta">
+                        {cur.applicantEmail}
+                        {cur.interviewer1 && ` · Interviewer 1: ${cur.interviewer1}`}
+                        {cur.interviewer2 && ` · Interviewer 2: ${cur.interviewer2}`}
+                      </div>
+                    </div>
+                    <div style={{ display:'flex', gap:6, flexShrink:0, alignItems:'center' }}>
+                      {cur.matchedApplicationId
+                        ? <span className="badge badge-ok">✓ Matched to application</span>
+                        : <span className="badge badge-warn"><AlertTriangleIcon size={11}/> No matching application</span>}
+                      <button className="btn btn-danger btn-sm" onClick={()=>del(cur.id)}>Delete</button>
+                    </div>
+                  </div>
+
+                  {(cur.choice1 || cur.choice2) && (
+                    <div className="sec">
+                      <div className="sec-title">Confirmed at Interview</div>
+                      <div className="team-chips">
+                        {cur.choice1 && <div className="team-chip"><span className="chip-rank">1st</span><span className="chip-team">{cur.choice1}</span></div>}
+                        {cur.choice2 && <div className="team-chip"><span className="chip-rank">2nd</span><span className="chip-team">{cur.choice2}</span></div>}
+                      </div>
+                      {matchedApp?.teamRankings?.first && matchedApp.teamRankings.first!==cur.choice1 && (
+                        <p style={{fontSize:12,color:'var(--g500)',marginTop:8}}>Originally ranked "{matchedApp.teamRankings.first}" 1st on their application — shown here for reference only, not overwritten.</p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="sec">
+                    <div className="sec-title">Interview Ratings</div>
+                    {R1_RATING_CATS.map(({key,label})=>(
+                      <div key={key} className="rrow" style={{ marginBottom:'6px' }}>
+                        <span className="rlabel">{label}</span>
+                        <Stars value={cur.ratings?.[key]||0} readOnly />
+                      </div>
+                    ))}
+                  </div>
+
+                  {cur.freeResponses?.length>0 && (
+                    <div className="sec">
+                      <div className="sec-title">Interview Notes</div>
+                      {cur.freeResponses.map((fr,i)=>(
+                        <div key={i}>
+                          <div className="fr-q">{fr.question}</div>
+                          <p className="fr-a">{fr.answer}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="sec" style={{ background:'var(--g50)' }}>
+                    <div className="sec-title">Decision</div>
+                    <div className="dec-btns">
+                      {['interview','push2nd','reject'].map(d=>(
+                        <button key={d}
+                          className={`dec-btn dec-btn-${d} ${(cur.r1Decision||'undecided')===d?'on':''}`}
+                          onClick={()=>setR1Decision(cur.id,d)}
+                        >{DECISION_LABELS[d]}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  DECISION TRACKER
 // ═══════════════════════════════════════════════════════════════
 function DecisionTracker() {
@@ -1499,6 +1801,7 @@ const TABS = [
   { id:'coffee',    label:'Coffee Chats', icon: CoffeeIcon },
   { id:'upload',    label:'Upload Apps',  icon: FileIcon },
   { id:'review',    label:'Review',       icon: SearchIcon },
+  { id:'r1',        label:'R1 Interviews',icon: ClipboardIcon },
   { id:'decisions', label:'Decisions',    icon: CheckCircleIcon },
 ];
 
@@ -1580,6 +1883,7 @@ function App() {
         ) : tab==='coffee' ? <CoffeeChatLog />
           : tab==='upload' ? <ApplicationUpload />
           : tab==='review' ? <ApplicationReview />
+          : tab==='r1' ? <R1Interviews />
           : <DecisionTracker />
         }
       </main>
