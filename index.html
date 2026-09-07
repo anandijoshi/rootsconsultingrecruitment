@@ -144,17 +144,20 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 .fr-q{font-size:11px;font-weight:700;color:var(--g500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;margin-top:16px}
 .fr-a{font-size:14px;color:var(--g900);line-height:1.65;white-space:pre-wrap}
 
-.r1-score-sec{background:linear-gradient(135deg,var(--primary-light),#fff)}
-.r1-score-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.qa-card{border:1px solid var(--g200);border-radius:8px;overflow:hidden}
+.qa-card+.qa-card{margin-top:10px}
+.qa-card-q{background:var(--primary-light);color:var(--g900);font-weight:700;font-size:13px;padding:8px 12px;border-bottom:1px solid var(--g200)}
+.qa-card-a{background:#fff;color:var(--g900);font-size:14px;line-height:1.65;white-space:pre-wrap;padding:10px 12px}
+
+.r1-score-sec{background:linear-gradient(135deg,var(--primary-light),#fff);padding:10px 14px}
+.r1-score-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .r1-score-badge{display:flex;align-items:baseline;gap:6px}
-.r1-score-pct{font-size:26px;font-weight:800;color:var(--primary)}
-.r1-score-frac{font-size:12px;color:var(--g500);font-weight:600}
-.r1-score-rows{display:flex;flex-direction:column;gap:10px}
-.r1-score-row{display:flex;align-items:center;gap:10px}
-.r1-score-label{width:130px;font-size:13px;font-weight:600;color:var(--g700);flex-shrink:0}
-.r1-score-bar{flex:1;height:8px;background:var(--g100);border-radius:100px;overflow:hidden}
-.r1-score-fill{height:100%;background:var(--primary);border-radius:100px}
-.r1-score-val{width:32px;text-align:right;font-size:12px;font-weight:700;color:var(--g600);flex-shrink:0}
+.r1-score-pct{font-size:32px;font-weight:900;color:var(--primary);letter-spacing:-.02em}
+.r1-score-frac{font-size:13px;color:var(--g600);font-weight:700}
+.r1-score-rows{display:flex;flex-direction:column}
+.r1-score-row{display:flex;align-items:center;justify-content:space-between;padding:3px 0}
+.r1-score-label{font-size:12px;font-weight:600;color:var(--g600)}
+.r1-score-val{font-size:15px;font-weight:800;color:var(--g900)}
 .resume-link{display:inline-flex;align-items:center;gap:5px;background:var(--primary-light);color:var(--primary);padding:7px 12px;border-radius:6px;font-weight:500;font-size:13px}
 .dec-btns{display:flex;gap:7px;flex-wrap:wrap}
 .dec-btn{padding:7px 18px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;border:2px solid transparent;transition:all .15s}
@@ -669,6 +672,13 @@ const TPL_EXAMPLE = [
 // actually filled in, since a response only ever answers one branch.
 const cleanHeader = s => (s||'').replace(/\s+/g,' ').trim();
 const headerHas = (h, needle) => cleanHeader(h).toLowerCase().includes(needle.toLowerCase());
+
+// Questions that should never show up in the R1 Interviews "Interview
+// Notes" list: pre-interview instructions (not applicant-specific), the
+// raw form Timestamp, and the auto-collected respondent "Email Address"
+// (the interviewer's own login, not the applicant's).
+const R1_HIDDEN_QUESTIONS = ['notes for everyone interviewing', 'timestamp', 'email address'];
+const isHiddenR1Question = h => R1_HIDDEN_QUESTIONS.some(p => headerHas(h,p));
 const findIdx = (headers, test) => headers.findIndex(h => h && test(h));
 const findAllIdx = (headers, test) => headers.reduce((acc,h,i) => (h && test(h) ? [...acc,i] : acc), []);
 const coalesce = (row, idxs) => {
@@ -911,13 +921,14 @@ function ApplicationUpload() {
 // ═══════════════════════════════════════════════════════════════
 //  APPLICATION REVIEW
 // ═══════════════════════════════════════════════════════════════
-function ApplicationReview() {
+function ApplicationReview({ targetId, onTargetConsumed }) {
   const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [showChat, setShowChat] = useState(true);
   const [showResume, setShowResume] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [filters, setFilters] = useState({ team:'', chat:'all', decision:'all', search:'' });
+  const skipFilterResetRef = useRef(false);
   const { data: appsRaw } = useFirebase('applications');
   const { data: chatsRaw } = useFirebase('coffeeChats');
 
@@ -950,7 +961,25 @@ function ApplicationReview() {
   const curChats = cur ? chatsForName(cur.prospectName) : [];
 
   useEffect(() => { setNoteDraft(cur?.notes||''); }, [cur?.id]);
-  useEffect(() => { setIdx(0); setRevealed(false); setShowResume(false); }, [JSON.stringify(filters)]);
+  useEffect(() => {
+    if (skipFilterResetRef.current) { skipFilterResetRef.current = false; return; }
+    setIdx(0); setRevealed(false); setShowResume(false);
+  }, [JSON.stringify(filters)]);
+
+  // Jumping in from another tab (e.g. R1 Interviews' "Matched to
+  // application" link) — clear any filters that might hide the target and
+  // land directly on their card, without letting the filter-change effect
+  // above immediately reset idx back to 0.
+  useEffect(() => {
+    if (!targetId) return;
+    const targetIdx = apps.findIndex(a => a.id === targetId);
+    if (targetIdx !== -1) {
+      skipFilterResetRef.current = true;
+      setFilters({ team:'', chat:'all', decision:'all', search:'' });
+      setIdx(targetIdx);
+    }
+    onTargetConsumed?.();
+  }, [targetId]);
 
   const setDecision = async d => {
     if (!cur) return;
@@ -1196,25 +1225,27 @@ function ApplicationReview() {
 // ═══════════════════════════════════════════════════════════════
 //  R1 INTERVIEWS
 // ═══════════════════════════════════════════════════════════════
-function R1Interviews() {
+function R1Interviews({ onViewApplication }) {
   const [preview, setPreview] = useState(null);
   const [importing, setImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef();
   const [idx, setIdx] = useState(0);
   const [showGranola, setShowGranola] = useState(false);
-  const [filters, setFilters] = useState({ decision:'all', team:'', search:'' });
+  const [filters, setFilters] = useState({ decision:'all', team1:'', team2:'', search:'' });
   const { data: r1Raw } = useFirebase('r1Interviews');
   const { data: appsRaw } = useFirebase('applications');
 
   const entries = r1Raw ? Object.entries(r1Raw).map(([id,v])=>({id,...v})).sort((a,b)=>b.createdAt-a.createdAt) : [];
   const apps = appsRaw ? Object.entries(appsRaw).map(([id,v])=>({id,...v})) : [];
 
-  // Team names here come straight from the R1 form's own dropdown (choice1),
-  // which may not spell things exactly like the canonical TEAMS list (e.g.
-  // "A&R" vs "Advisory & Research") — derive options from what's actually
-  // in the data rather than risk a silent mismatch against a static list.
-  const r1Teams = [...new Set(entries.map(e=>e.choice1).filter(Boolean))].sort();
+  // Team names here come straight from the R1 form's own dropdown
+  // (choice1/choice2), which may not spell things exactly like the
+  // canonical TEAMS list (e.g. "A&R" vs "Advisory & Research") — derive
+  // options from what's actually in the data rather than risk a silent
+  // mismatch against a static list.
+  const r1Teams1 = [...new Set(entries.map(e=>e.choice1).filter(Boolean))].sort();
+  const r1Teams2 = [...new Set(entries.map(e=>e.choice2).filter(Boolean))].sort();
 
   // Form only asks for the applicant's name/email (no shared id with the
   // applications collection), so match by name first, falling back to
@@ -1246,10 +1277,10 @@ function R1Interviews() {
         const iPrep = findIdx(headers, h => headerHas(h,'preparedness'));
         const iCollab = findIdx(headers, h => headerHas(h,'collaboration'));
         const iGranola = findIdx(headers, h => headerHas(h,'granola'));
-        const iInterviewerNotes = findIdx(headers, h => headerHas(h,'notes for everyone interviewing'));
+        const hiddenIdxs = findAllIdx(headers, isHiddenR1Question);
 
         const mappedIdx = new Set(
-          [iName,iEmail,iInt1,iInt2,iChoice1,iChoice2,iMission,iPassion,iCulture,iPrep,iCollab,iGranola,iInterviewerNotes]
+          [iName,iEmail,iInt1,iInt2,iChoice1,iChoice2,iMission,iPassion,iCulture,iPrep,iCollab,iGranola,...hiddenIdxs]
             .filter(i=>i>=0)
         );
 
@@ -1345,7 +1376,8 @@ function R1Interviews() {
 
   const filtered = entries.filter(e => {
     if (filters.decision!=='all' && (e.r1Decision||'undecided')!==filters.decision) return false;
-    if (filters.team && e.choice1!==filters.team) return false;
+    if (filters.team1 && e.choice1!==filters.team1) return false;
+    if (filters.team2 && e.choice2!==filters.team2) return false;
     if (filters.search) {
       const q = filters.search.toLowerCase();
       if (!(e.applicantName||'').toLowerCase().includes(q) && !(e.applicantEmail||'').toLowerCase().includes(q)) return false;
@@ -1356,7 +1388,7 @@ function R1Interviews() {
   const safeIdx = Math.min(idx, Math.max(0, filtered.length-1));
   const cur = filtered[safeIdx];
   const matchedApp = cur?.matchedApplicationId ? apps.find(a=>a.id===cur.matchedApplicationId) : null;
-  const curFreeResponses = cur?.freeResponses?.filter(fr => !headerHas(fr.question,'notes for everyone interviewing')) || [];
+  const curFreeResponses = cur?.freeResponses?.filter(fr => !isHiddenR1Question(fr.question)) || [];
   const totalScore = cur ? R1_RATING_CATS.reduce((sum,{key}) => sum + (cur.ratings?.[key]||0), 0) : 0;
   const scorePct = Math.round(totalScore/25*100);
 
@@ -1425,9 +1457,13 @@ function R1Interviews() {
           <div className="filter-bar">
             <input type="text" placeholder="Search applicant name or email…" value={filters.search}
               onChange={e => setFilters(f=>({...f,search:e.target.value}))} />
-            <select value={filters.team} onChange={e=>setFilters(f=>({...f,team:e.target.value}))}>
-              <option value="">All Teams</option>
-              {r1Teams.map(t=><option key={t} value={t}>{t}</option>)}
+            <select value={filters.team1} onChange={e=>setFilters(f=>({...f,team1:e.target.value}))}>
+              <option value="">All 1st Choices</option>
+              {r1Teams1.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+            <select value={filters.team2} onChange={e=>setFilters(f=>({...f,team2:e.target.value}))}>
+              <option value="">All 2nd Choices</option>
+              {r1Teams2.map(t=><option key={t} value={t}>{t}</option>)}
             </select>
             <select value={filters.decision} onChange={e=>setFilters(f=>({...f,decision:e.target.value}))}>
               <option value="all">All Decisions</option>
@@ -1463,7 +1499,8 @@ function R1Interviews() {
                     </div>
                     <div style={{ display:'flex', gap:6, flexShrink:0, alignItems:'center' }}>
                       {cur.matchedApplicationId
-                        ? <span className="badge badge-ok">✓ Matched to application</span>
+                        ? <button type="button" className="badge badge-ok" style={{border:'none',cursor:'pointer',font:'inherit'}}
+                            onClick={()=>onViewApplication?.(cur.matchedApplicationId)}>✓ Matched to application →</button>
                         : <span className="badge badge-warn"><AlertTriangleIcon size={11}/> No matching application</span>}
                       <button className="btn btn-danger btn-sm" onClick={()=>del(cur.id)}>Delete</button>
                     </div>
@@ -1494,7 +1531,6 @@ function R1Interviews() {
                       {R1_RATING_CATS.map(({key,label})=>(
                         <div key={key} className="r1-score-row">
                           <span className="r1-score-label">{label}</span>
-                          <div className="r1-score-bar"><div className="r1-score-fill" style={{ width:`${(cur.ratings?.[key]||0)/5*100}%` }}/></div>
                           <span className="r1-score-val">{cur.ratings?.[key]||0}/5</span>
                         </div>
                       ))}
@@ -1514,9 +1550,9 @@ function R1Interviews() {
                     <div className="sec">
                       <div className="sec-title">Interview Notes</div>
                       {curFreeResponses.map((fr,i)=>(
-                        <div key={i}>
-                          <div className="fr-q">{fr.question}</div>
-                          <p className="fr-a">{fr.answer}</p>
+                        <div key={i} className="qa-card">
+                          <div className="qa-card-q">{fr.question}</div>
+                          <p className="qa-card-a">{fr.answer}</p>
                         </div>
                       ))}
                     </div>
@@ -2116,6 +2152,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [ready, setReady] = useState(false);
   const [dbError, setDbError] = useState(null);
+  const [reviewTarget, setReviewTarget] = useState(null);
+  const goToApplication = id => { setReviewTarget(id); setTab('review'); };
 
   useEffect(() => {
     try {
@@ -2187,9 +2225,9 @@ function App() {
           </div>
         ) : tab==='coffee' ? <CoffeeChatLog />
           : tab==='upload' ? <ApplicationUpload />
-          : tab==='review' ? <ApplicationReview />
+          : tab==='review' ? <ApplicationReview targetId={reviewTarget} onTargetConsumed={()=>setReviewTarget(null)} />
           : tab==='decisions' ? <DecisionTracker />
-          : tab==='r1' ? <R1Interviews />
+          : tab==='r1' ? <R1Interviews onViewApplication={goToApplication} />
           : <PostR1Decisions />
         }
       </main>
