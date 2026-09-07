@@ -168,12 +168,14 @@ th.sortable:hover{background:var(--g100);color:var(--g700)}
 .r1-score-badge{display:flex;align-items:baseline;gap:6px;background:#fff;border:1px solid var(--g200);border-radius:10px;padding:6px 14px;box-shadow:var(--shadow)}
 .r1-score-pct{font-size:26px;font-weight:900;color:var(--primary);letter-spacing:-.02em}
 .r1-score-frac{font-size:13px;color:var(--g600);font-weight:700}
-.r1-score-body{display:flex;align-items:center;gap:20px}
-.r1-score-rows{display:flex;flex-direction:column;width:260px;flex-shrink:0}
-.r1-score-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:3px 0}
+.r1-score-body{display:flex;align-items:stretch;gap:20px}
+.r1-score-rows{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.r1-score-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 0}
 .r1-score-label{font-size:12px;font-weight:600;color:var(--g600)}
 .r1-score-val{font-size:15px;font-weight:800;color:var(--g900)}
-.r1-score-granola{flex:1;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--g200);padding-left:20px;align-self:stretch}
+.r1-score-granola{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;border-left:1px solid var(--g200);padding-left:20px}
+.r1-score-interviewers{display:flex;flex-direction:column;gap:6px;text-align:center;font-size:13px;font-weight:600;color:var(--g700)}
+.r1-score-int-label{display:block;font-size:10px;font-weight:700;color:var(--g400);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px}
 .resume-link{display:inline-flex;align-items:center;gap:5px;background:var(--primary-light);color:var(--primary);padding:7px 12px;border-radius:6px;font-weight:500;font-size:13px}
 .dec-btns{display:flex;gap:7px;flex-wrap:wrap}
 .dec-btn{padding:7px 18px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;border:2px solid transparent;transition:all .15s}
@@ -1528,11 +1530,7 @@ function R1Interviews({ onViewApplication, targetId, onTargetConsumed }) {
                   <div className="app-card-head">
                     <div>
                       <div className="app-name">{cur.applicantName || 'Unknown Applicant'}</div>
-                      <div className="app-meta">
-                        {cur.applicantEmail}
-                        {cur.interviewer1 && ` · Interviewer 1: ${cur.interviewer1}`}
-                        {cur.interviewer2 && ` · Interviewer 2: ${cur.interviewer2}`}
-                      </div>
+                      <div className="app-meta">{cur.applicantEmail}</div>
                     </div>
                     <div style={{ display:'flex', gap:6, flexShrink:0, alignItems:'center' }}>
                       {cur.matchedApplicationId
@@ -1573,11 +1571,19 @@ function R1Interviews({ onViewApplication, targetId, onTargetConsumed }) {
                           </div>
                         ))}
                       </div>
-                      {cur.granolaLink && (
+                      {(cur.interviewer1 || cur.interviewer2 || cur.granolaLink) && (
                         <div className="r1-score-granola">
-                          <button type="button" className="resume-link" style={{border:'none',cursor:'pointer'}} onClick={()=>setShowGranola(true)}>
-                            <PaperclipIcon size={13}/> View Granola Notes
-                          </button>
+                          {(cur.interviewer1 || cur.interviewer2) && (
+                            <div className="r1-score-interviewers">
+                              {cur.interviewer1 && <div><span className="r1-score-int-label">Interviewer 1</span>{cur.interviewer1}</div>}
+                              {cur.interviewer2 && <div><span className="r1-score-int-label">Interviewer 2</span>{cur.interviewer2}</div>}
+                            </div>
+                          )}
+                          {cur.granolaLink && (
+                            <button type="button" className="resume-link" style={{border:'none',cursor:'pointer'}} onClick={()=>setShowGranola(true)}>
+                              <PaperclipIcon size={13}/> View Granola Notes
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
