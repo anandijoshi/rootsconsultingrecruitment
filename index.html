@@ -893,7 +893,7 @@ function ApplicationUpload() {
                   <td style={{fontWeight:500}}>{a.prospectName}</td>
                   <td style={{color:'var(--g500)',fontSize:12}}>{a.email}</td>
                   <td>{a.grade||'—'}</td>
-                  <td>{a.teamRankings?.first||'—'}</td>
+                  <td>{a.teamRankings?.first||'—'}{a.decision==='push2nd' && <span className="badge badge-warn" style={{marginLeft:6}}>Pushed</span>}</td>
                   <td>{a.coffeeChatId?<span className="badge badge-ok">✓</span>:<span className="badge badge-gray">None</span>}</td>
                   <td><span className={`dec-badge dec-${a.decision||'undecided'}`}>{DECISION_LABELS[a.decision||'undecided']}</span></td>
                   <td style={{color:'var(--g400)',fontSize:12}}>{a.createdAt?new Date(a.createdAt).toLocaleDateString():'—'}</td>
@@ -1072,6 +1072,9 @@ function ApplicationReview() {
                       ) : null
                     )}
                   </div>
+                  {cur.decision==='push2nd' && (
+                    <p style={{fontSize:12,color:'var(--warning)',fontWeight:600,marginTop:8}}>↳ Pushed to 2nd choice — their 1st and 2nd choice were swapped when this decision was made.</p>
+                  )}
                 </div>
 
                 {/* Meeting Availability */}
@@ -1719,7 +1722,7 @@ function DecisionTracker() {
                     <td style={{fontWeight:500}}>{a.prospectName}</td>
                     <td style={{color:'var(--g500)',fontSize:12}}>{a.email}</td>
                     <td>{a.grade||'—'}</td>
-                    <td>{a.teamRankings?.first||'—'}</td>
+                    <td>{a.teamRankings?.first||'—'}{a.decision==='push2nd' && <span className="badge badge-warn" style={{marginLeft:6}}>Pushed</span>}</td>
                     <td>{c
                       ?<span style={{display:'flex',alignItems:'center',gap:4}}><span className="badge badge-ok">✓</span><span style={{fontSize:12,color:'var(--g500)',display:'inline-flex',alignItems:'center',gap:2}}><StarIcon size={11}/>{avg(c.ratings)}</span></span>
                       :<span className="badge badge-gray">None</span>}
@@ -1921,7 +1924,7 @@ function PostR1Decisions() {
                     <td style={{color:'var(--g400)',fontSize:12}}>{i+1}</td>
                     <td style={{fontWeight:500}}>{a.prospectName}</td>
                     <td style={{color:'var(--g500)',fontSize:12}}>{a.email}</td>
-                    <td>{a.teamRankings?.first||'—'}</td>
+                    <td>{a.teamRankings?.first||'—'}{a.decision==='push2nd' && <span className="badge badge-warn" style={{marginLeft:6}}>Pushed</span>}</td>
                     <td><span className={`dec-badge dec-${appD}`}>{DECISION_LABELS[appD]}</span></td>
                     <td>{r1
                       ? <span className={`dec-badge dec-${r1D}`}>{DECISION_LABELS[r1D]}</span>
