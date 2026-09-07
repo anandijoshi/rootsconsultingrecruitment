@@ -1519,17 +1519,19 @@ function R1Interviews() {
 
       {showGranola && cur?.granolaLink && (
         <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)setShowGranola(false)}}>
-          <div className="modal modal-wide">
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+          <div className="modal">
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
               <h2 style={{ marginBottom:0 }}>Granola Notes</h2>
               <button className="btn btn-ghost btn-sm" onClick={()=>setShowGranola(false)}><XIcon size={14}/></button>
             </div>
-            <iframe src={cur.granolaLink} title="Granola notes"
-              style={{ width:'100%', height:'75vh', border:'1px solid var(--g200)', borderRadius:8 }} />
-            <p style={{ fontSize:12, color:'var(--g500)', marginTop:8 }}>If the notes don't load above, Granola may not allow embedding — use the link below instead.</p>
+            <p className="sub">Granola doesn't allow its notes pages to be embedded, so this opens in a new tab.</p>
+            <div style={{ display:'flex', justifyContent:'center', padding:'24px 0' }}>
+              <a href={cur.granolaLink} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+                <PaperclipIcon size={13}/> Open Granola Notes
+              </a>
+            </div>
             <div className="modal-footer">
-              <a href={cur.granolaLink} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">Open in new tab</a>
-              <button className="btn btn-primary" onClick={()=>setShowGranola(false)}>Close</button>
+              <button className="btn btn-secondary" onClick={()=>setShowGranola(false)}>Close</button>
             </div>
           </div>
         </div>
