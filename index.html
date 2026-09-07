@@ -668,6 +668,12 @@ const coalesce = (row, idxs) => {
 };
 
 const PROJECT_ALIASES = { 'a&r': 'Advisory & Research' };
+
+// Canonical team list — used for "All Teams" filters so every project
+// (including low-signup ones like A&R, and the Other bucket) always shows
+// up, instead of only whichever teams happen to be someone's 1st choice
+// in the currently-imported data.
+const TEAMS = ["World Centric", "Tara's Organic Ice Cream", 'Berkeley Humane', '1951 Coffee', 'Advisory & Research', 'Kash Cafe', 'Other'];
 function extractProject(header) {
   const m = (header||'').match(/\[([^\]]+)\]/);
   if (!m) return null;
@@ -905,7 +911,7 @@ function ApplicationReview() {
 
   const apps = appsRaw ? Object.entries(appsRaw).map(([id,v])=>({id,...v})).sort((a,b)=>(a.prospectName||'').localeCompare(b.prospectName||'')) : [];
   const chats = chatsRaw ? Object.entries(chatsRaw).map(([id,v]) => ({ id, ...v })) : [];
-  const teams = [...new Set(apps.map(a=>a.teamRankings?.first).filter(Boolean))].sort();
+  const teams = TEAMS;
 
   // Match live by prospect name rather than trusting a stored coffeeChatId —
   // that field is set once at CSV-import time and misses chats logged after
@@ -1478,7 +1484,7 @@ function DecisionTracker() {
 
   const apps = appsRaw ? Object.entries(appsRaw).map(([id,v])=>({id,...v})) : [];
   const chats = chatsRaw || {};
-  const teams = [...new Set(apps.map(a=>a.teamRankings?.first).filter(Boolean))].sort();
+  const teams = TEAMS;
 
   const filtered = apps.filter(a => {
     if (filters.team && a.teamRankings?.first !== filters.team) return false;
@@ -1667,7 +1673,7 @@ function PostR1Decisions() {
 
   const apps = appsRaw ? Object.entries(appsRaw).map(([id,v])=>({id,...v})) : [];
   const r1Entries = r1Raw ? Object.entries(r1Raw).map(([id,v])=>({id,...v})) : [];
-  const teams = [...new Set(apps.map(a=>a.teamRankings?.first).filter(Boolean))].sort();
+  const teams = TEAMS;
 
   // An applicant can in principle have more than one R1 entry (re-interviewed,
   // etc.) — use the most recent one as "their" R1 result for this view.
