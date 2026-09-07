@@ -973,9 +973,12 @@ function ApplicationReview({ targetId, onTargetConsumed }) {
   // Jumping in from another tab (e.g. R1 Interviews' "Matched to
   // application" link) — clear any filters that might hide the target and
   // land directly on their card, without letting the filter-change effect
-  // above immediately reset idx back to 0.
+  // above immediately reset idx back to 0. This component mounts fresh
+  // when switching tabs, so on the very first render appsRaw is still
+  // null (Firebase hasn't responded yet) — wait for it instead of
+  // consuming the target against an empty list.
   useEffect(() => {
-    if (!targetId) return;
+    if (!targetId || !appsRaw) return;
     const targetIdx = apps.findIndex(a => a.id === targetId);
     if (targetIdx !== -1) {
       skipFilterResetRef.current = true;
@@ -983,7 +986,7 @@ function ApplicationReview({ targetId, onTargetConsumed }) {
       setIdx(targetIdx);
     }
     onTargetConsumed?.();
-  }, [targetId]);
+  }, [targetId, appsRaw]);
 
   const setDecision = async d => {
     if (!cur) return;
