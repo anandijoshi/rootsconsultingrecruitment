@@ -1289,12 +1289,30 @@ function R1Interviews() {
     });
   };
 
+  // Re-uploading the same sheet (e.g. after interviewers add Granola links,
+  // or the form gains new questions) should refresh existing entries in
+  // place rather than create duplicates — matched by applicant name, same
+  // as application matching. The existing r1Decision and createdAt are
+  // preserved so re-importing never discards a decision you've already made.
+  const findExisting = name => entries.find(x => x.applicantName && normName(x.applicantName)===normName(name));
+
   const doImport = async () => {
     if (!preview) return;
     setImporting(true);
     try {
-      for (const e of preview) await db.ref('r1Interviews').push(e);
-      toast.success(`Imported ${preview.length} interview entries!`);
+      let created = 0, updated = 0;
+      for (const e of preview) {
+        const existing = findExisting(e.applicantName);
+        if (existing) {
+          const { r1Decision, createdAt, ...rest } = e;
+          await db.ref(`r1Interviews/${existing.id}`).update(rest);
+          updated++;
+        } else {
+          await db.ref('r1Interviews').push(e);
+          created++;
+        }
+      }
+      toast.success(`Imported: ${created} new, ${updated} updated`);
       setPreview(null);
     } catch(err) { toast.error(err.message); }
     setImporting(false);
@@ -1370,6 +1388,7 @@ function R1Interviews() {
               <strong>{preview.length} interview entries ready to import</strong>
               <div style={{ fontSize:12, color:'var(--g500)', marginTop:2 }}>
                 {preview.filter(e=>e.matchedApplicationId).length} matched to applications · {preview.filter(e=>!e.matchedApplicationId).length} unmatched
+                {' · '}{preview.filter(e=>findExisting(e.applicantName)).length} will update existing · {preview.filter(e=>!findExisting(e.applicantName)).length} new
               </div>
             </div>
             <div style={{ display:'flex', gap:8 }}>
@@ -1381,7 +1400,7 @@ function R1Interviews() {
           </div>
           <div className="tbl-wrap" style={{ border:'none', borderRadius:0 }}>
             <table><thead><tr>
-              <th>Applicant</th><th>Interviewer 1</th><th>Interviewer 2</th><th>Avg Rating</th><th>Application</th>
+              <th>Applicant</th><th>Interviewer 1</th><th>Interviewer 2</th><th>Avg Rating</th><th>Application</th><th>Import</th>
             </tr></thead><tbody>
               {preview.map((e,i) => (
                 <tr key={i}>
@@ -1390,6 +1409,7 @@ function R1Interviews() {
                   <td>{e.interviewer2||'—'}</td>
                   <td>⭐ {avg(e.ratings)}</td>
                   <td>{e.matchedApplicationId?<span className="badge badge-ok">✓ Matched</span>:<span className="badge badge-warn">No match</span>}</td>
+                  <td>{findExisting(e.applicantName)?<span className="badge badge-gray">Update</span>:<span className="badge badge-ok">New</span>}</td>
                 </tr>
               ))}
             </tbody></table>
