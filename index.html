@@ -1367,6 +1367,15 @@ function R1Interviews({ onViewApplication, targetId, onTargetConsumed }) {
           await db.ref('r1Interviews').push(e);
           created++;
         }
+        // The team confirmed at interview is now authoritative — overwrite
+        // the matched application's tracked 1st/2nd choice with it.
+        if (e.matchedApplicationId && (e.choice1 || e.choice2)) {
+          const matchedApp = apps.find(a => a.id === e.matchedApplicationId);
+          const teamRankings = { ...(matchedApp?.teamRankings||{}) };
+          if (e.choice1) teamRankings.first = e.choice1;
+          if (e.choice2) teamRankings.second = e.choice2;
+          await db.ref(`applications/${e.matchedApplicationId}`).update({ teamRankings });
+        }
       }
       toast.success(`Imported: ${created} new, ${updated} updated`);
       setPreview(null);
@@ -1548,8 +1557,8 @@ function R1Interviews({ onViewApplication, targetId, onTargetConsumed }) {
                         {cur.choice1 && <div className="team-chip"><span className="chip-rank">1st</span><span className="chip-team">{cur.choice1}</span></div>}
                         {cur.choice2 && <div className="team-chip"><span className="chip-rank">2nd</span><span className="chip-team">{cur.choice2}</span></div>}
                       </div>
-                      {matchedApp?.teamRankings?.first && matchedApp.teamRankings.first!==cur.choice1 && (
-                        <p style={{fontSize:12,color:'var(--g500)',marginTop:8}}>Originally ranked "{matchedApp.teamRankings.first}" 1st on their application — shown here for reference only, not overwritten.</p>
+                      {matchedApp && matchedApp.teamRankings?.first!==cur.choice1 && (
+                        <p style={{fontSize:12,color:'var(--warning)',fontWeight:600,marginTop:8}}>Their application still shows "{matchedApp.teamRankings?.first||'—'}" as 1st choice — re-import this CSV to sync it to what was confirmed here.</p>
                       )}
                     </div>
                   )}
